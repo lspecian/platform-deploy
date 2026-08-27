@@ -125,3 +125,4 @@ of them without noticing the other exists.
 - **Infrastructure drift detection.** Belongs on a schedule, not in a pipeline.
 - **Image signing and provenance attestation.** An SBOM is produced, but signing
   against an emulated registry proves nothing about a real supply chain.
+
