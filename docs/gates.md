@@ -95,6 +95,12 @@ is what surfaced it.
 
 ---
 
+## Verified in practice
+
+ReviewBot's comment on a pull request is checked by opening one. The suite that
+tests the guardrails is itself the thing most likely to rot, so the claims in
+this document are exercised rather than asserted.
+
 ## Where gates run
 
 | Stage | Gates |
@@ -119,3 +125,4 @@ of them without noticing the other exists.
 - **Infrastructure drift detection.** Belongs on a schedule, not in a pipeline.
 - **Image signing and provenance attestation.** An SBOM is produced, but signing
   against an emulated registry proves nothing about a real supply chain.
+
