@@ -1,0 +1,74 @@
+:root {
+  --bg: #fbfaf8;
+  --fg: #1a1917;
+  --muted: #6f6b64;
+  --line: #e4e0d8;
+  --accent: #b4532a;
+  color-scheme: light dark;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #171614;
+    --fg: #f2efe9;
+    --muted: #97918a;
+    --line: #302e2a;
+    --accent: #e08a5f;
+  }
+}
+
+* { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  min-height: 100vh;
+  display: grid;
+  place-items: center;
+  background: var(--bg);
+  color: var(--fg);
+  font: 16px/1.5 ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+}
+
+.card {
+  padding: 3rem;
+  max-width: 34rem;
+  width: 100%;
+}
+
+.eyebrow {
+  margin: 0 0 1.5rem;
+  font-size: 0.75rem;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--accent);
+}
+
+h1 {
+  margin: 0 0 2rem;
+  font-size: clamp(2.25rem, 7vw, 3.5rem);
+  font-weight: 600;
+  letter-spacing: -0.03em;
+}
+
+h1.muted { color: var(--muted); }
+h1.error { color: var(--accent); }
+
+.detail { color: var(--muted); }
+
+.meta {
+  margin: 0;
+  display: grid;
+  gap: 0.75rem;
+  border-top: 1px solid var(--line);
+  padding-top: 1.5rem;
+}
+
+.meta > div {
+  display: flex;
+  justify-content: space-between;
+  gap: 1rem;
+}
+
+dt { color: var(--muted); font-size: 0.875rem; }
+dd { margin: 0; font-size: 0.875rem; }
+.mono { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
