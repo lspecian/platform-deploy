@@ -5,10 +5,11 @@
 
 ## Context
 
-Four behaviours of the local emulator differ from AWS in ways that change the
-design. All four were found by a timeboxed spike before anything was built on
-top of them. Each is recorded here with what was observed, what the road does
-about it, and what changes on real AWS.
+Seven behaviours of the local emulator differ from AWS in ways that change the
+design. Five were found by a timeboxed spike before anything was built on top of
+them; two surfaced later, when a second environment was deployed. Each is
+recorded here with what was observed, what the road does about it, and what
+changes on real AWS.
 
 This document exists so that nobody reading the code has to guess whether a
 conditional is a workaround or a genuine platform decision.
