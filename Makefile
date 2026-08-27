@@ -39,12 +39,22 @@ up: emulator-start build deploy ## Bring up everything and deploy to dev
 install: ## Install dependencies
 	npm install
 
+.PHONY: tools
+tools: ## Download opa and gitleaks into .tools/
+	@$(SCRIPTS)/install-tools.sh
+
+.PHONY: doctor
+doctor: ## Check your local setup and print how to fix it
+	@node platform/cli/dist/index.js doctor
+
 .PHONY: dev
 dev: ## Run the app locally with hot reload
 	npm run dev --workspace @tarmac/hello-world
 
 .PHONY: build
 build: ## Build the application and its container image
+	npm run build --workspace @tarmac/validate
+	npm run build --workspace @tarmac/cli
 	npm run build --workspace @tarmac/hello-world
 	docker build -f apps/hello-world/Dockerfile -t $(IMAGE) \
 		--build-arg APP_VERSION=$(APP_VERSION) \
