@@ -5,21 +5,19 @@
 
 ---
 
-## The one open decision
+## Centre of gravity — decided
 
-Everything else in this document is settled. This is not:
-
-**Where is the centre of gravity?** All three areas below appear in the project.
-The question is which one gets built to depth and which two get built to
-"credible and honest". Doing all three shallowly is the failure mode.
+All three areas below appear in the project. One gets built to depth; the other
+two get built to "credible and honest". Building all three shallowly is the
+failure mode this decision exists to prevent.
 
 | Option | The strongest thing it can claim | Cost | Risk |
 |---|---|---|---|
-| **A. Quality gates** *(recommended)* | "Every guardrail is proven to fail closed, in CI, on every commit" | Low–medium | None — runs entirely in GitHub Actions, no emulator dependency |
+| **A. Quality gates** *(chosen)* | "Every guardrail is proven to fail closed, in CI, on every commit" | Low–medium | None — runs entirely in GitHub Actions, no emulator dependency |
 | **B. Developer experience** | "A developer ships without learning any of it" | Medium | Easy to demo, harder to prove depth |
 | **C. Infrastructure** | "Real Terraform, real containers, three isolated accounts" | Medium–high | Weakened by the spike findings below — ingress cannot be demonstrated |
 
-**Recommendation: A, with B as a close second and C as the substrate.**
+**Decided: A, with B second and C as the substrate.**
 
 Reasoning: the spike knocked a hole in C (no working load balancer data plane,
 so no demonstrable ingress and no traffic-shifted deploys). A is the cheapest
