@@ -8,9 +8,9 @@ The differentiator lives in Phase 3 (the broken-fixture suite). If time runs sho
 
 ## Phases
 
-- [ ] **Phase 1: Foundation** - A real service, a schema-validated manifest, and dual-target infrastructure that actually serves traffic
-- [ ] **Phase 2: The Road** - The inherited pipeline, every gate, the policy layer, and a deploy that rolls itself back
-- [ ] **Phase 3: Proof and Surfaces** - Broken fixtures that prove the guardrails bite, plus CLI, ReviewBot, docs and real AWS
+- [x] **Phase 1: Foundation** - A real service, a schema-validated manifest, and dual-target infrastructure that actually serves traffic
+- [x] **Phase 2: The Road** - The inherited pipeline, every gate, the policy layer, and a deploy that rolls itself back
+- [x] **Phase 3: Proof and Surfaces** - Broken fixtures that prove the guardrails bite, plus CLI, ReviewBot, docs and real AWS
 
 ## Phase Details
 
@@ -27,9 +27,9 @@ The differentiator lives in Phase 3 (the broken-fixture suite). If time runs sho
 **Plans**: 3 plans
 
 Plans:
-- [ ] 01-01: Application — React SPA, Fastify API, health endpoints, structured logs, tests, hardened image
-- [ ] 01-02: Contract — `service.yaml`, JSON Schema, single validation library shared by CLI, hook and CI
-- [ ] 01-03: Infrastructure — dual-target Terraform modules, three environments, `make up`
+- [x] 01-01: Application — React SPA, Fastify API, health endpoints, structured logs, tests, hardened image
+- [x] 01-02: Contract — `service.yaml`, JSON Schema, single validation library shared by CLI, hook and CI
+- [x] 01-03: Infrastructure — dual-target Terraform modules, three environments, `make up`
 
 ### Phase 2: The Road
 **Goal**: A change flows from pull request to a deployed environment through a pipeline the application repository inherits, where every gate's blocking behaviour is deliberate and documented.
@@ -46,9 +46,9 @@ Plans:
 **Plans**: 3 plans
 
 Plans:
-- [ ] 02-01: Reusable workflow, all gates, block-vs-report matrix, expiring waivers
-- [ ] 02-02: Rego policy layer against the Terraform plan, with unit tests
-- [ ] 02-03: Deploy, digest promotion, smoke test, automatic rollback
+- [x] 02-01: Reusable workflow, all gates, block-vs-report matrix, expiring waivers
+- [x] 02-02: Rego policy layer against the Terraform plan, with unit tests
+- [x] 02-03: Deploy, digest promotion, smoke test, automatic rollback
 
 ### Phase 3: Proof and Surfaces
 **Goal**: Every guardrail is demonstrably proven to reject the thing it exists to reject, and the road has the surfaces a developer touches and the documentation a reviewer reads.
@@ -64,10 +64,37 @@ Plans:
 **Plans**: 4 plans
 
 Plans:
-- [ ] 03-01: Broken-fixture suite and the CI job that asserts each is rejected
-- [ ] 03-02: `tarmac` CLI and the scaffolding template
-- [ ] 03-03: ReviewBot pull request comment
-- [ ] 03-04: README, ADRs, omissions list, real-AWS path with OIDC and teardown
+- [x] 03-01: Broken-fixture suite and the CI job that asserts each is rejected
+- [x] 03-02: `tarmac` CLI and the scaffolding template
+- [x] 03-03: ReviewBot pull request comment
+- [x] 03-04: README, ADRs, omissions list, real-AWS path with OIDC and teardown
 
 ---
 *Roadmap created: 2026-08-27*
+
+---
+
+## Outcome
+
+All three phases delivered. Both pipelines green on GitHub Actions, including a
+job that stands up the emulator, deploys, and verifies the running commit
+matches the build.
+
+**Verified, not asserted:**
+- `make up` from a clean machine reaches a service answering through its load
+  balancer in about 90 seconds
+- Rollback tested by deploying a wrong image: smoke failed, previous version
+  restored, exit code 1
+- Container verified non-root with a read-only root filesystem, and graceful
+  SIGTERM confirmed from its shutdown log
+- 29 guardrail tests including mutation tests that delete each policy and assert
+  the fixture stops being caught
+
+**Deferred from the Should tier:** none. CLI, scaffolding and ReviewBot all
+landed. The real-AWS path is built and OIDC-authenticated but has not been run
+against the live account — that remains a one-command manual step.
+
+**Gates caught real defects in this repository**, which is the evidence they
+work: an over-broad IAM role, vulnerable packages invisible to `npm audit`, a
+config bug reading `process.env` instead of its argument, and three guardrails
+that were silently dead.
