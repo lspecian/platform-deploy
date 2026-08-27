@@ -1,0 +1,6 @@
+// Template. See credentials.yaml.template.
+export const config = {
+  region: "eu-central-1",
+  awsAccessKeyId: "__AWS_ACCESS_KEY_ID__",
+  awsSecretAccessKey: "__AWS_SECRET_ACCESS_KEY__",
+};

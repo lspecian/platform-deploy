@@ -20,14 +20,3 @@ coverage/
 # Version control internals.
 .git/
 
-# The guardrail fixtures.
-#
-# These are deliberately broken services whose entire purpose is to be rejected.
-# A repository-wide scan would flag them on every run forever, and a permanently
-# red gate is a gate people stop reading.
-#
-# This exclusion is safe only because it is paired: tests/gates/guardrails.test.ts
-# scans this exact directory and asserts the findings are still produced. If the
-# rule stopped working, that test fails. The directory is excluded from the
-# blanket scan and covered by a targeted one — not simply ignored.
-tests/gates/fixtures/

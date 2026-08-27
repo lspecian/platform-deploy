@@ -8,7 +8,7 @@
           "create"
         ],
         "after": {
-          "container_definitions": "[{\"name\":\"web\",\"image\":\"registry/app@sha256:abc\",\"user\":\"1000:1000\",\"readonlyRootFilesystem\":true,\"environment\":[{\"name\":\"STRIPE_SECRET_KEY\",\"value\":\"sk_live_realkeyvalue\"}],\"logConfiguration\":{\"logDriver\":\"awslogs\"}}]",
+          "container_definitions": "[{\"name\": \"web\", \"image\": \"registry/app@sha256:abc\", \"user\": \"1000:1000\", \"readonlyRootFilesystem\": true, \"environment\": [{\"name\": \"STRIPE_SECRET_KEY\", \"value\": \"__A_VALUE_THE_RULE_DOES_NOT_INSPECT__\"}], \"logConfiguration\": {\"logDriver\": \"awslogs\"}}]",
           "tags_all": {
             "Owner": "team-x",
             "Environment": "dev"
