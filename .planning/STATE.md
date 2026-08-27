@@ -9,12 +9,12 @@ See: .planning/PROJECT.md (updated 2026-08-27)
 
 ## Current Position
 
-Phase: 1 of 3 (Foundation)
+Phase: 2 of 3 (The Road)
 Plan: 0 of 3 in current phase
-Status: Ready to plan
-Last activity: 2026-08-27 — Project initialized from IDEA.md after emulator spike
+Status: Phase 1 complete, ready to execute Phase 2
+Last activity: 2026-08-27 — Phase 1 delivered: app, contract, dual-target infra, deploy with rollback
 
-Progress: [░░░░░░░░░░] 0%
+Progress: [███░░░░░░░] 33%
 
 ## Performance Metrics
 
@@ -27,7 +27,7 @@ Progress: [░░░░░░░░░░] 0%
 
 | Phase | Plans | Total | Avg/Plan |
 |-------|-------|-------|----------|
-| 1 | 0/3 | — | — |
+| 1 | 3/3 | — | — |
 | 2 | 0/3 | — | — |
 | 3 | 0/4 | — | — |
 
@@ -51,7 +51,18 @@ Decisions are logged in PROJECT.md Key Decisions table. Load-bearing ones for cu
 ### Pending Todos
 
 - Report the `ModifyListener` default-rule bug upstream to ministackorg/ministack
-- Decide whether the app should read/write the provisioned bucket so the manifest-driven resource is exercised rather than merely declared
+- ECR push against the emulator is untested; local deploys use the host Docker
+  image directly. Needed before the pipeline can promote by digest.
+
+### Verified working (Phase 1)
+
+- `make up` from a clean machine: 92s to a service answering through its load balancer
+- Full chain proven: service.yaml declares a bucket -> Terraform creates it ->
+  task gets its name -> readiness probe reaches it -> load balancer health path
+- Rollback tested by deploying a wrong image: smoke failed, previous version
+  restored, exit code 1
+- Container verified non-root (uid 1000) with a read-only root filesystem
+- 62 tests across app and validator, all green
 
 ### Blockers/Concerns
 
