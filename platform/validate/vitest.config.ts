@@ -21,7 +21,7 @@ export default defineConfig({
        * achieves so any regression trips it, rather than at a round number
        * that would need contorted tests to satisfy.
        */
-      thresholds: { lines: 100, functions: 100, branches: 87, statements: 100 },
+      thresholds: { lines: 100, functions: 100, branches: 92, statements: 100 },
     },
   },
 });

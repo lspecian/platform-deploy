@@ -1,0 +1,36 @@
+# This repository's pipeline.
+#
+# Note how little there is here. Everything the service is actually checked
+# against lives in the reusable golden-path workflow, which this calls. An
+# application team's CI file looks exactly like this one — a few lines naming
+# their service — and they inherit every gate, including gates added after they
+# onboarded.
+#
+# That is the difference between a paved road and a template. A template is
+# copied once and diverges immediately; a road is somewhere you stay.
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+concurrency:
+  # A superseded run is wasted compute and a confusing status on the pull
+  # request. Never cancel on main: those runs gate deploys.
+  group: ci-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+permissions:
+  contents: read
+
+jobs:
+  golden-path:
+    uses: ./.github/workflows/golden-path.yml
+    with:
+      service-path: apps/hello-world
+      environment: dev
+      # Deploy only from main. A pull request proves the deploy works against a
+      # throwaway emulator; it does not get to change a shared environment.
+      deploy: ${{ github.ref == 'refs/heads/main' }}

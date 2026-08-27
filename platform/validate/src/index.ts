@@ -7,6 +7,23 @@ import { checkSemantics } from "./semantic.js";
 import type { ServiceManifest, ValidationError, ValidationResult } from "./types.js";
 
 export type { ServiceManifest, ValidationError, ValidationResult } from "./types.js";
+export {
+  loadWaivers,
+  loadWaiverFile,
+  isWaived,
+  MAX_WAIVER_DAYS,
+  type Waiver,
+  type WaiverSet,
+  type WaiverProblem,
+} from "./waivers.js";
+export {
+  summarizeAudit,
+  shouldFailBuild,
+  BLOCKING_SEVERITIES,
+  type Severity,
+  type Finding,
+  type AuditSummary,
+} from "./audit.js";
 
 export const SCHEMA_PATH = fileURLToPath(
   new URL("../../schema/service.schema.json", import.meta.url),

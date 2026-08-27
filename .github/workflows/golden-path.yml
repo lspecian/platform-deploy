@@ -1,0 +1,276 @@
+# The paved road.
+#
+# Application repositories get the entire pipeline by calling this workflow.
+# They do not copy it. That distinction is the whole point: when a gate is
+# added, tightened or fixed, every service inherits the change at once. A
+# pipeline that teams copy is a pipeline that is different in every repository
+# within a quarter, and nobody can answer "does every service scan its images?"
+#
+# What blocks and what merely reports is a deliberate decision per gate, with
+# the reasoning written down in docs/gates.md. Broadly:
+#
+#   Blocks   — a correctness or security property that is cheap to fix now and
+#              expensive to fix later, and where a false positive is rare.
+#   Reports  — information that helps a reviewer judge a change but has no
+#              honest pass/fail line. Blocking on these teaches people to
+#              re-run the build until it goes green, which trains everyone to
+#              ignore the gate that actually matters.
+name: golden-path
+
+on:
+  workflow_call:
+    inputs:
+      service-path:
+        description: Path to the service being built.
+        type: string
+        default: apps/hello-world
+      environment:
+        description: Environment to deploy to when this is a push to main.
+        type: string
+        default: dev
+      deploy:
+        description: Whether to deploy after the gates pass.
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+env:
+  NODE_VERSION: "22"
+
+jobs:
+  # ---------------------------------------------------------------------------
+  # BLOCKING — correctness
+  # ---------------------------------------------------------------------------
+  quality:
+    name: Lint, types, tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+      - run: npm ci
+      - name: Typecheck
+        run: npm run typecheck --workspaces --if-present
+      - name: Unit tests with coverage floor
+        # The coverage threshold lives in each package's vitest config and is set
+        # where the suite actually sits, so a drop is a real regression rather
+        # than noise. Vitest exits non-zero when it is breached.
+        run: npm test --workspaces --if-present
+
+  # ---------------------------------------------------------------------------
+  # BLOCKING — the service contract
+  # ---------------------------------------------------------------------------
+  contract:
+    name: Service manifest
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+      - run: npm ci
+      - run: npm run build --workspace @tarmac/validate
+      - name: Validate manifest
+        # The same code path a developer runs locally and the pre-commit hook
+        # runs on commit. If CI validated differently, local checks would stop
+        # being trusted and everyone would push to find out.
+        run: node platform/validate/dist/cli.js ${{ inputs.service-path }}/service.yaml
+
+  # ---------------------------------------------------------------------------
+  # BLOCKING — secrets
+  # ---------------------------------------------------------------------------
+  secrets:
+    name: Secret scan
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          # Full history. Scanning only the diff misses a secret committed
+          # earlier in the branch and removed in a later commit — which is still
+          # a secret, permanently, in the repository.
+          fetch-depth: 0
+      - name: Install gitleaks
+        run: |
+          VERSION=$(curl -fsSL https://api.github.com/repos/gitleaks/gitleaks/releases/latest | jq -r .tag_name)
+          curl -fsSL "https://github.com/gitleaks/gitleaks/releases/download/${VERSION}/gitleaks_${VERSION#v}_linux_x64.tar.gz" \
+            | tar -xz -C /usr/local/bin gitleaks
+      - name: Scan history
+        run: gitleaks detect --source . --redact --verbose --exit-code 1
+
+  # ---------------------------------------------------------------------------
+  # BLOCKING — dependencies
+  # ---------------------------------------------------------------------------
+  dependencies:
+    name: Dependency vulnerabilities
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+      - run: npm ci
+      - run: npm run build --workspace @tarmac/validate
+      - name: Check waivers are owned and unexpired
+        # Run before the audit: an expired waiver fails the build on its own,
+        # so a suppression cannot outlive its justification silently.
+        run: node platform/scripts/check-waivers.mjs
+      - name: Audit
+        run: node platform/scripts/audit.mjs
+
+  # ---------------------------------------------------------------------------
+  # BLOCKING — static analysis
+  # ---------------------------------------------------------------------------
+  sast:
+    name: Static analysis
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+      - run: pip install --quiet semgrep
+      - name: Scan
+        # Local rules rather than a remote ruleset: the pipeline should produce
+        # the same result today and in six months, and a registry ruleset that
+        # changes underneath you turns a green build red with no code change.
+        run: semgrep --config platform/semgrep --error --quiet .
+
+  # ---------------------------------------------------------------------------
+  # BLOCKING — infrastructure
+  # ---------------------------------------------------------------------------
+  infrastructure:
+    name: Terraform and policy
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: 1.9.8
+      - uses: open-policy-agent/setup-opa@v2
+        with:
+          version: latest
+      - name: Format
+        run: terraform -chdir=infra fmt -check -recursive
+      - name: Validate
+        run: |
+          terraform -chdir=infra init -backend=false -input=false
+          terraform -chdir=infra validate
+      - name: Policy unit tests
+        # The policies are code, so they are tested like code. A guardrail
+        # nobody has watched fail is a guardrail nobody should trust.
+        run: opa test platform/policy -v
+      - name: Policy against the plan
+        # Against the plan rather than the source: source-level policy cannot
+        # see values from variables, locals, data sources or modules, so it can
+        # pass while the resource being created violates the rule.
+        run: OPA=opa platform/scripts/policy-check.sh dev local
+
+  # ---------------------------------------------------------------------------
+  # BLOCKING — the image
+  # ---------------------------------------------------------------------------
+  image:
+    name: Build and scan image
+    runs-on: ubuntu-latest
+    outputs:
+      digest: ${{ steps.build.outputs.digest }}
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+      - run: npm ci
+      - name: Build image
+        id: build
+        run: |
+          docker build -f ${{ inputs.service-path }}/Dockerfile \
+            --build-arg GIT_COMMIT=$(git rev-parse --short HEAD) \
+            --build-arg APP_VERSION=0.1.0 \
+            -t tarmac/service:ci .
+          echo "digest=$(docker image inspect tarmac/service:ci --format '{{.Id}}')" >> "$GITHUB_OUTPUT"
+      - name: Scan image
+        uses: aquasecurity/trivy-action@0.28.0
+        with:
+          image-ref: tarmac/service:ci
+          format: table
+          exit-code: "1"
+          severity: CRITICAL,HIGH
+          ignore-unfixed: true
+      - name: Generate SBOM
+        uses: anchore/sbom-action@v0
+        with:
+          image: tarmac/service:ci
+          format: spdx-json
+          artifact-name: sbom.spdx.json
+          output-file: sbom.spdx.json
+
+  # ---------------------------------------------------------------------------
+  # BLOCKING — the road end to end
+  # ---------------------------------------------------------------------------
+  integration:
+    name: Deploy and smoke test
+    runs-on: ubuntu-latest
+    needs: [quality, contract, infrastructure, image]
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: 1.9.8
+          terraform_wrapper: false
+      - run: npm ci
+      - name: Start the emulator
+        run: platform/scripts/emulator.sh start
+      - name: Build image
+        run: |
+          npm run build --workspace @tarmac/hello-world
+          docker build -f ${{ inputs.service-path }}/Dockerfile \
+            --build-arg GIT_COMMIT=$(git rev-parse --short HEAD) \
+            -t tarmac/hello-world:$(git rev-parse --short HEAD) .
+      - name: Deploy and smoke test
+        # This is the gate that would have caught every integration bug found
+        # while building this platform. Unit tests pass on code that cannot
+        # actually deploy.
+        run: |
+          EXPECT_COMMIT=$(git rev-parse --short HEAD) \
+            platform/scripts/deploy.sh ${{ inputs.environment }} local \
+            tarmac/hello-world:$(git rev-parse --short HEAD)
+      - name: Emulator logs on failure
+        if: failure()
+        run: docker logs tarmac-dev 2>&1 | tail -100
+
+  # ---------------------------------------------------------------------------
+  # REPORTING — never blocks
+  #
+  # These inform a reviewer. None of them has an honest pass/fail line, and
+  # blocking on a number that moves for legitimate reasons teaches people to
+  # re-run the build until it passes.
+  # ---------------------------------------------------------------------------
+  report:
+    name: Report
+    runs-on: ubuntu-latest
+    needs: [quality]
+    if: always()
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+      - run: npm ci
+      - name: Bundle size
+        run: |
+          npm run build --workspace @tarmac/hello-world
+          echo "### Bundle size" >> "$GITHUB_STEP_SUMMARY"
+          echo '```' >> "$GITHUB_STEP_SUMMARY"
+          du -sh ${{ inputs.service-path }}/dist/public/assets/* >> "$GITHUB_STEP_SUMMARY" 2>/dev/null || true
+          echo '```' >> "$GITHUB_STEP_SUMMARY"

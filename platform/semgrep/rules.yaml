@@ -1,0 +1,46 @@
+# Static analysis rules for this platform.
+#
+# Local rules rather than a registry ruleset. A remote ruleset changing
+# underneath you turns a green build red with no code change, and a pipeline
+# that fails for reasons nobody can trace is a pipeline people learn to re-run
+# rather than read. These are few, specific, and explainable.
+rules:
+  - id: no-hardcoded-aws-credentials
+    languages: [typescript, javascript]
+    severity: ERROR
+    message: >-
+      Hardcoded AWS credentials. Credentials belong in the task role, which the
+      platform provisions; a key in source is a key in git history forever.
+    patterns:
+      - pattern-regex: (?i)(aws_secret_access_key|aws_access_key_id)\s*[:=]\s*["'](?!test["'])[A-Za-z0-9/+=]{16,}["']
+
+  - id: no-child-process-with-interpolation
+    languages: [typescript, javascript]
+    severity: ERROR
+    message: >-
+      Shell command built by string interpolation. Use execFile with an argument
+      array so an unexpected value cannot become a second command.
+    patterns:
+      - pattern-either:
+          - pattern: exec(`...${$X}...`)
+          - pattern: execSync(`...${$X}...`)
+
+  - id: no-disabled-tls-verification
+    languages: [typescript, javascript]
+    severity: ERROR
+    message: >-
+      TLS verification disabled. This silently accepts any certificate, which
+      makes every connection interceptable.
+    patterns:
+      - pattern-either:
+          - pattern: rejectUnauthorized: false
+          - pattern: process.env.NODE_TLS_REJECT_UNAUTHORIZED = "0"
+
+  - id: no-eval
+    languages: [typescript, javascript]
+    severity: ERROR
+    message: eval executes arbitrary code. There is a safer way to do whatever this is.
+    patterns:
+      - pattern-either:
+          - pattern: eval(...)
+          - pattern: new Function(...)

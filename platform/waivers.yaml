@@ -1,0 +1,11 @@
+# Vulnerability waivers.
+#
+# A waiver lets a finding through, and every one of them must name an owner,
+# give a reason, and expire within 90 days. An expired waiver fails the build.
+#
+# The rule exists because the alternative — suppression with no expiry — is how
+# a security gate quietly stops covering anything while the build stays green.
+# Forcing renewal turns "we suppressed it and forgot" into a scheduled decision.
+#
+# There are currently no waivers, which is the state to stay in.
+waivers: []
