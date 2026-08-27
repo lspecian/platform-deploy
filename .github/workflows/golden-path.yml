@@ -35,6 +35,7 @@ on:
 
 permissions:
   contents: read
+  pull-requests: write
 
 env:
   NODE_VERSION: "22"
@@ -278,3 +279,54 @@ jobs:
           echo '```' >> "$GITHUB_STEP_SUMMARY"
           du -sh ${{ inputs.service-path }}/dist/public/assets/* >> "$GITHUB_STEP_SUMMARY" 2>/dev/null || true
           echo '```' >> "$GITHUB_STEP_SUMMARY"
+
+  # ---------------------------------------------------------------------------
+  # ReviewBot — one comment, updated in place
+  # ---------------------------------------------------------------------------
+  reviewbot:
+    name: ReviewBot
+    runs-on: ubuntu-latest
+    if: github.event_name == 'pull_request' && always()
+    needs: [quality, contract, secrets, dependencies, sast, infrastructure, image, integration, report]
+    permissions:
+      contents: read
+      pull-requests: write
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+      - run: npm ci
+      - run: npm run build --workspace @tarmac/validate && npm run build --workspace @tarmac/cli
+
+      - name: Render the comment
+        id: render
+        run: |
+          {
+            echo "body<<TARMAC_EOF"
+            node platform/scripts/reviewbot.mjs '${{ toJSON(needs) }}'
+            echo
+            echo "TARMAC_EOF"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Post or update it
+        # One comment per pull request, edited in place. Appending would turn a
+        # ten-commit branch into a wall of near-identical comments, and the
+        # useful one is never the one you are looking at.
+        env:
+          GH_TOKEN: ${{ github.token }}
+          BODY: ${{ steps.render.outputs.body }}
+          PR: ${{ github.event.pull_request.number }}
+        run: |
+          existing=$(gh api "repos/${GITHUB_REPOSITORY}/issues/${PR}/comments" \
+            --jq '.[] | select(.body | contains("<!-- tarmac-reviewbot -->")) | .id' | head -1)
+          if [[ -n "${existing}" ]]; then
+            gh api --method PATCH "repos/${GITHUB_REPOSITORY}/issues/comments/${existing}" \
+              -f body="${BODY}" >/dev/null
+            echo "updated comment ${existing}"
+          else
+            gh api --method POST "repos/${GITHUB_REPOSITORY}/issues/${PR}/comments" \
+              -f body="${BODY}" >/dev/null
+            echo "posted a new comment"
+          fi

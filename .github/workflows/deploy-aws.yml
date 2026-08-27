@@ -1,0 +1,118 @@
+# Deploy to a real AWS account.
+#
+# Manual dispatch only. Nothing that runs automatically can reach a real cloud
+# account: a pipeline that deploys to real infrastructure on a push is a
+# pipeline that can bill you on a push, and a reference platform should not have
+# that property.
+#
+# Credentials come from GitHub OIDC. No long-lived AWS key exists in this
+# repository or in its secrets — static keys in CI are the most common way cloud
+# credentials leak, and the fix is about twenty lines of Terraform.
+#
+# Everything created is tagged Platform=tarmac with the owning team, so
+# `make destroy-aws` finds all of it and nothing is left running by accident.
+name: deploy-aws
+
+on:
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: Environment to deploy.
+        type: choice
+        options: [dev, staging, prod]
+        default: dev
+      confirm:
+        description: Type the environment name again to confirm.
+        type: string
+        required: true
+
+permissions:
+  contents: read
+  id-token: write # required for OIDC
+
+jobs:
+  deploy:
+    name: Deploy to AWS
+    runs-on: ubuntu-latest
+    # GitHub environment protection is the second lock on production. The
+    # manifest schema is the first: it rejects `approval: automatic` under prod.
+    # Two independent mechanisms, because the interesting failure is someone
+    # changing one without noticing the other exists.
+    environment: aws-${{ inputs.environment }}
+
+    steps:
+      - name: Confirm the target
+        # A typed confirmation is a small thing, but the failure it prevents is
+        # someone selecting prod from a dropdown by muscle memory.
+        if: inputs.confirm != inputs.environment
+        run: |
+          echo "::error::Confirmation '${{ inputs.confirm }}' does not match '${{ inputs.environment }}'"
+          exit 1
+
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version: "22"
+          cache: npm
+
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: 1.9.8
+          terraform_wrapper: false
+
+      - name: Assume the deploy role
+        uses: aws-actions/configure-aws-credentials@v5
+        with:
+          role-to-assume: ${{ vars.AWS_DEPLOY_ROLE_ARN }}
+          aws-region: eu-central-1
+          # A short session: this job takes minutes, so the credential should
+          # not outlive it by hours.
+          role-duration-seconds: 1800
+
+      - name: Confirm which account we are in
+        # Printed before anything is created. If this is the wrong account, that
+        # should be visible in the log above the damage, not below it.
+        run: aws sts get-caller-identity
+
+      - run: npm ci
+
+      - name: Build and push the image
+        id: image
+        run: |
+          COMMIT=$(git rev-parse --short HEAD)
+          ACCOUNT=$(aws sts get-caller-identity --query Account --output text)
+          REGISTRY="${ACCOUNT}.dkr.ecr.eu-central-1.amazonaws.com"
+
+          npm run build --workspace @tarmac/hello-world
+          docker build -f apps/hello-world/Dockerfile \
+            --build-arg GIT_COMMIT="${COMMIT}" \
+            --build-arg APP_VERSION=0.1.0 \
+            -t "${REGISTRY}/hello-world:${COMMIT}" .
+
+          aws ecr describe-repositories --repository-names hello-world >/dev/null 2>&1 \
+            || aws ecr create-repository --repository-name hello-world \
+                 --image-tag-mutability IMMUTABLE >/dev/null
+
+          aws ecr get-login-password | docker login --username AWS --password-stdin "${REGISTRY}"
+          docker push "${REGISTRY}/hello-world:${COMMIT}"
+
+          # Resolve to a digest and deploy that, never the tag. A tag can be
+          # repointed; a digest is the artifact that was actually tested.
+          DIGEST=$(aws ecr describe-images --repository-name hello-world \
+            --image-ids imageTag="${COMMIT}" --query 'imageDetails[0].imageDigest' --output text)
+          echo "image=${REGISTRY}/hello-world@${DIGEST}" >> "$GITHUB_OUTPUT"
+
+      - name: Deploy, smoke test, roll back on failure
+        run: |
+          EXPECT_COMMIT=$(git rev-parse --short HEAD) \
+            platform/scripts/deploy.sh ${{ inputs.environment }} aws ${{ steps.image.outputs.image }}
+
+      - name: Where it is running
+        run: |
+          cd infra && terraform output -raw service_url && echo
+
+      - name: Reminder
+        if: always()
+        run: |
+          echo "::notice::This is real infrastructure and it costs money. Run 'make destroy-aws ENVIRONMENT=${{ inputs.environment }}' when finished."
