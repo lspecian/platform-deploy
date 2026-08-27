@@ -1,0 +1,80 @@
+# The platform's own pipeline.
+#
+# The golden-path workflow checks services. This one checks the road itself.
+# They are separate because an application repository has no policies, no
+# fixtures and no reason to run any of this — inheriting it would mean every
+# service paying for checks that cannot apply to it.
+#
+# The guardrail suite is the job that matters here. A gate can break silently in
+# ways the happy path never reveals: a Rego rule renamed so it matches nothing,
+# a scanner upgraded to a version whose output format changed so findings parse
+# to zero, a `continue-on-error` added during an incident and never removed. In
+# every one of those the pipeline stays green. The only way to know a gate still
+# bites is to bite it, on every commit.
+name: platform
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+concurrency:
+  group: platform-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+permissions:
+  contents: read
+
+jobs:
+  guardrails:
+    name: Guardrails reject what they should
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version: "22"
+          cache: npm
+
+      - uses: open-policy-agent/setup-opa@v2
+        with:
+          version: latest
+
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+
+      - name: Install scanners
+        # The guardrail tests run the real scanners rather than reimplementing
+        # their detection. If a tool is missing the tests skip, and a skipped
+        # guardrail test is exactly the silent no-op this suite exists to
+        # prevent — so they are installed here, not left to chance.
+        run: |
+          pip install --quiet semgrep
+          VERSION=$(curl -fsSL https://api.github.com/repos/gitleaks/gitleaks/releases/latest | jq -r .tag_name)
+          curl -fsSL "https://github.com/gitleaks/gitleaks/releases/download/${VERSION}/gitleaks_${VERSION#v}_linux_x64.tar.gz" \
+            | sudo tar -xz -C /usr/local/bin gitleaks
+
+      - run: npm ci
+      - run: npm run build --workspace @tarmac/validate
+
+      - name: Policy unit tests
+        run: opa test platform/policy -v
+
+      - name: Guardrail verification
+        run: npm test --workspace @tarmac/gate-tests
+
+      - name: Assert no guardrail test was skipped
+        # A skipped test reports as a pass. Since every scanner is installed
+        # above, a skip here means a tool failed to install and a guardrail went
+        # unverified while the build stayed green — the precise failure this
+        # suite is built to catch, so it fails the build.
+        run: |
+          output=$(npm test --workspace @tarmac/gate-tests 2>&1)
+          echo "$output"
+          if grep -qE '[0-9]+ skipped' <<<"$output"; then
+            echo "::error::A guardrail test was skipped. Every scanner must be present in CI."
+            exit 1
+          fi

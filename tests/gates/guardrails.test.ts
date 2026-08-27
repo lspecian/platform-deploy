@@ -163,43 +163,86 @@ describe("dependency guardrail", () => {
   });
 });
 
+/**
+ * Scanners are run against a copy of the fixture placed outside the repository.
+ *
+ * The repo's own .semgrepignore and .gitleaks.toml exclude the fixture
+ * directory, because a planted secret would otherwise leave the pipeline's
+ * blanket scan permanently red — and a gate that is always red is a gate nobody
+ * reads. Copying out means these tests exercise the detection rule itself
+ * rather than the ignore configuration.
+ */
+function withFixtureCopy<T>(fixture: string, fn: (dir: string) => T): T {
+  const scratch = mkdtempSync(join(tmpdir(), "tarmac-fixture-"));
+  try {
+    cpSync(join(FIXTURES, fixture), scratch, { recursive: true });
+    return fn(scratch);
+  } finally {
+    rmSync(scratch, { recursive: true, force: true });
+  }
+}
+
+function toolAvailable(binary: string, args: string[]): boolean {
+  try {
+    execFileSync(binary, args, { stdio: "ignore" });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 describe("secret scanning guardrail", () => {
-  const gitleaksAvailable = (() => {
-    try {
-      execFileSync("gitleaks", ["version"], { stdio: "ignore" });
-      return true;
-    } catch {
-      return false;
-    }
-  })();
+  const gitleaksAvailable = toolAvailable("gitleaks", ["version"]);
 
   /*
-   * This one runs the real scanner rather than reimplementing its detection,
-   * because the thing worth verifying is that *gitleaks* still catches this —
-   * not that a regex we wrote does.
+   * Runs the real scanner rather than reimplementing its detection, because
+   * what is worth verifying is that *gitleaks* still catches this — not that a
+   * regex we wrote does.
    *
    * Skipped when the binary is absent so the suite still runs on a laptop; CI
-   * installs it, and `it.skipIf` reports the skip loudly rather than passing
+   * installs it, and `skipIf` reports the skip loudly rather than passing
    * silently. A guardrail test that quietly no-ops is the exact failure mode
-   * this whole directory exists to prevent.
+   * this directory exists to prevent.
    */
   it.skipIf(!gitleaksAvailable)("detects a credential committed to source", () => {
-    let failed = false;
-    let output = "";
-    try {
-      execFileSync(
-        "gitleaks",
-        ["detect", "--no-git", "--source", join(FIXTURES, "secret-in-source"), "--redact", "--exit-code", "1"],
-        { encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] },
-      );
-    } catch (error) {
-      failed = true;
-      output = String((error as { stdout?: string; stderr?: string }).stdout ?? "") +
-        String((error as { stderr?: string }).stderr ?? "");
-    }
+    const { failed, output } = withFixtureCopy("secret-in-source", (dir) => {
+      try {
+        execFileSync("gitleaks", ["detect", "--no-git", "--source", dir, "--redact", "--exit-code", "1"], {
+          encoding: "utf8",
+          stdio: ["ignore", "pipe", "pipe"],
+        });
+        return { failed: false, output: "" };
+      } catch (error) {
+        const e = error as { stdout?: string; stderr?: string };
+        return { failed: true, output: `${e.stdout ?? ""}${e.stderr ?? ""}` };
+      }
+    });
 
     expect(failed, "gitleaks did not flag the planted credential").toBe(true);
     expect(output.toLowerCase()).toMatch(/leak|secret|finding/);
+  });
+});
+
+describe("static analysis guardrail", () => {
+  const semgrepAvailable = toolAvailable("semgrep", ["--version"]);
+
+  it.skipIf(!semgrepAvailable)("flags a hardcoded AWS key", () => {
+    const rules = join(REPO_ROOT, "platform", "semgrep");
+    const { failed, output } = withFixtureCopy("secret-in-source", (dir) => {
+      try {
+        const out = execFileSync("semgrep", ["--config", rules, "--error", "--quiet", "--json", dir], {
+          encoding: "utf8",
+          stdio: ["ignore", "pipe", "pipe"],
+        });
+        return { failed: false, output: out };
+      } catch (error) {
+        const e = error as { stdout?: string };
+        return { failed: true, output: e.stdout ?? "" };
+      }
+    });
+
+    expect(failed, "semgrep did not flag the planted AWS key").toBe(true);
+    expect(output).toContain("no-hardcoded-aws-access-key");
   });
 });
 

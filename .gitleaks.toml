@@ -1,0 +1,21 @@
+# Secret scanning configuration.
+#
+# Extends the default rule set rather than replacing it: the built-in rules are
+# far better maintained than anything written here would be.
+[extend]
+useDefault = true
+
+[[allowlists]]
+description = """
+The guardrail fixtures.
+
+tests/gates/fixtures/secret-in-source contains a fabricated AWS key whose only
+job is to be detected. Scanning it on every run would leave this gate
+permanently red, and a gate that is always red is a gate nobody reads.
+
+This is safe only because it is paired: tests/gates/guardrails.test.ts runs
+gitleaks against this exact directory and asserts the credential is still
+flagged. If the rule stopped working, that test fails. The path is excluded from
+the blanket scan and covered by a targeted one.
+"""
+paths = ['''tests/gates/fixtures/.*''']

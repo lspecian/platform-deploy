@@ -4,17 +4,34 @@
 # underneath you turns a green build red with no code change, and a pipeline
 # that fails for reasons nobody can trace is a pipeline people learn to re-run
 # rather than read. These are few, specific, and explainable.
+#
+# Note: semgrep evaluates `pattern-regex` with RE2, which has no lookaround.
+# Exclusions are expressed with `pattern-not-regex` rather than `(?!...)`.
 rules:
-  - id: no-hardcoded-aws-credentials
+  - id: no-hardcoded-aws-access-key
     languages: [typescript, javascript]
     severity: ERROR
     message: >-
-      Hardcoded AWS credentials. Credentials belong in the task role, which the
-      platform provisions; a key in source is a key in git history forever.
+      Hardcoded AWS access key id. Credentials belong in the task role, which
+      the platform provisions. A key committed to source is in git history
+      permanently, whether or not a later commit removes it.
     patterns:
-      - pattern-regex: (?i)(aws_secret_access_key|aws_access_key_id)\s*[:=]\s*["'](?!test["'])[A-Za-z0-9/+=]{16,}["']
+      - pattern-regex: '\bAKIA[0-9A-Z]{16}\b'
 
-  - id: no-child-process-with-interpolation
+  - id: no-hardcoded-credential-assignment
+    languages: [typescript, javascript]
+    severity: ERROR
+    message: >-
+      A credential-shaped constant assigned in source. Read it from the
+      environment, which the platform populates from the task role or from
+      Secrets Manager.
+    patterns:
+      - pattern-regex: '(?i)(secret|password|token|api[_-]?key)\s*[:=]\s*["''][A-Za-z0-9/+=_-]{20,}["'']'
+      # The emulator's documented public constant is not a credential. See
+      # docs/adr/0002-emulator-constraints.md.
+      - pattern-not-regex: '(?i)["'']test["'']'
+
+  - id: no-shell-injection-via-interpolation
     languages: [typescript, javascript]
     severity: ERROR
     message: >-
@@ -22,8 +39,8 @@ rules:
       array so an unexpected value cannot become a second command.
     patterns:
       - pattern-either:
-          - pattern: exec(`...${$X}...`)
-          - pattern: execSync(`...${$X}...`)
+          - pattern: exec(`...`)
+          - pattern: execSync(`...`)
 
   - id: no-disabled-tls-verification
     languages: [typescript, javascript]
@@ -33,13 +50,15 @@ rules:
       makes every connection interceptable.
     patterns:
       - pattern-either:
-          - pattern: rejectUnauthorized: false
-          - pattern: process.env.NODE_TLS_REJECT_UNAUTHORIZED = "0"
+          - pattern: "rejectUnauthorized: false"
+          - pattern-regex: 'NODE_TLS_REJECT_UNAUTHORIZED\s*=\s*["'']?0'
 
-  - id: no-eval
+  - id: no-dynamic-code-execution
     languages: [typescript, javascript]
     severity: ERROR
-    message: eval executes arbitrary code. There is a safer way to do whatever this is.
+    message: >-
+      eval and the Function constructor execute arbitrary code. There is a safer
+      way to do whatever this is.
     patterns:
       - pattern-either:
           - pattern: eval(...)

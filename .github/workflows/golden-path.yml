@@ -100,7 +100,7 @@ jobs:
           curl -fsSL "https://github.com/gitleaks/gitleaks/releases/download/${VERSION}/gitleaks_${VERSION#v}_linux_x64.tar.gz" \
             | tar -xz -C /usr/local/bin gitleaks
       - name: Scan history
-        run: gitleaks detect --source . --redact --verbose --exit-code 1
+        run: gitleaks detect --source . --config .gitleaks.toml --redact --verbose --exit-code 1
 
   # ---------------------------------------------------------------------------
   # BLOCKING — dependencies
@@ -195,7 +195,7 @@ jobs:
             -t tarmac/service:ci .
           echo "digest=$(docker image inspect tarmac/service:ci --format '{{.Id}}')" >> "$GITHUB_OUTPUT"
       - name: Scan image
-        uses: aquasecurity/trivy-action@0.28.0
+        uses: aquasecurity/trivy-action@0.36.0
         with:
           image-ref: tarmac/service:ci
           format: table

@@ -16,8 +16,11 @@ REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 OPA="${OPA:-${REPO_ROOT}/.tools/opa}"
 command -v "${OPA}" >/dev/null 2>&1 || OPA="opa"
 
-PLAN_BIN="$(mktemp -t tarmac-plan)"
-PLAN_JSON="$(mktemp -t tarmac-plan-json)"
+# GNU mktemp requires the XXXXXX placeholder; BSD mktemp does not. Omitting it
+# works on macOS and fails on a Linux CI runner, which is a fun way to lose
+# twenty minutes.
+PLAN_BIN="$(mktemp -t tarmac-plan.XXXXXX)"
+PLAN_JSON="$(mktemp -t tarmac-plan-json.XXXXXX)"
 trap 'rm -f "${PLAN_BIN}" "${PLAN_JSON}"' EXIT
 
 cd "${REPO_ROOT}/infra"
