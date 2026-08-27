@@ -22,8 +22,13 @@ concurrency:
   group: ci-${{ github.ref }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
+# A called workflow cannot request more permission than its caller grants, so
+# the write scope ReviewBot needs to post its comment has to be granted here.
+# Requesting it only in the reusable workflow is a parse-time failure, not a
+# runtime one — the whole workflow refuses to start.
 permissions:
   contents: read
+  pull-requests: write
 
 jobs:
   golden-path:
