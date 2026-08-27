@@ -13,13 +13,19 @@
  * internet, even though they sit in a public subnet.
  */
 
-data "aws_availability_zones" "available" {
-  state = "available"
-}
-
 locals {
   # Two AZs: a load balancer requires at least two subnets in distinct zones.
-  azs = slice(data.aws_availability_zones.available.names, 0, 2)
+  #
+  # Derived from the region rather than read from an aws_availability_zones data
+  # source. A data source makes `terraform plan` require a reachable endpoint,
+  # which would mean the policy gate could not run without infrastructure up —
+  # and a policy check that needs a live cloud to tell you your plan is unsafe
+  # is a policy check that runs too late.
+  #
+  # The trade-off is that this assumes the region has an `a` and `b` zone. True
+  # of every region this deploys to; override `availability_zones` if that ever
+  # stops being true.
+  azs = length(var.availability_zones) > 0 ? var.availability_zones : ["${var.region}a", "${var.region}b"]
 }
 
 resource "aws_vpc" "main" {

@@ -53,6 +53,10 @@ jobs:
           node-version: ${{ env.NODE_VERSION }}
           cache: npm
       - run: npm ci
+      - name: Build the validation library
+        # Its .d.ts files are what the gate tests typecheck against, so it has
+        # to exist before tsc runs anywhere else in the workspace.
+        run: npm run build --workspace @tarmac/validate
       - name: Typecheck
         run: npm run typecheck --workspaces --if-present
       - name: Unit tests with coverage floor
@@ -195,7 +199,7 @@ jobs:
             -t tarmac/service:ci .
           echo "digest=$(docker image inspect tarmac/service:ci --format '{{.Id}}')" >> "$GITHUB_OUTPUT"
       - name: Scan image
-        uses: aquasecurity/trivy-action@0.36.0
+        uses: aquasecurity/trivy-action@v0.36.0
         with:
           image-ref: tarmac/service:ci
           format: table

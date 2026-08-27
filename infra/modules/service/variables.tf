@@ -79,3 +79,9 @@ variable "log_retention_days" {
   description = "Log retention. Finite by default: logs kept forever are a cost and a liability, and nobody reads a two-year-old request log."
   default     = 30
 }
+
+variable "availability_zones" {
+  type        = list(string)
+  description = "Override the derived availability zones. Empty means derive them from the region."
+  default     = []
+}

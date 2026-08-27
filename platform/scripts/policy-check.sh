@@ -28,7 +28,12 @@ cd "${REPO_ROOT}/infra"
 echo "==> Planning ${ENVIRONMENT} (${TARGET})"
 terraform init -input=false -no-color >/dev/null
 terraform workspace select -or-create "${ENVIRONMENT}" >/dev/null 2>&1
-terraform plan -input=false -no-color -lock=false \
+# -refresh=false: a policy check evaluates the change being proposed, not the
+# current state of the world. Refreshing would require every resource in state
+# to be reachable, which makes the gate fail when infrastructure is merely
+# stopped -- and a gate that needs the cloud up to tell you your plan is unsafe
+# runs far too late to be useful.
+terraform plan -input=false -no-color -lock=false -refresh=false \
   -out="${PLAN_BIN}" \
   -var-file="envs/${TARGET}-${ENVIRONMENT}.tfvars" \
   -var="image=${IMAGE:-registry/hello-world@sha256:0000000000000000000000000000000000000000000000000000000000000000}" \
