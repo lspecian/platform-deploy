@@ -18,3 +18,4 @@ crash.log
 # build artifacts
 sbom.json
 *.tgz
+.tools/

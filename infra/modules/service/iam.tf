@@ -31,18 +31,26 @@ resource "aws_iam_role" "execution" {
 }
 
 data "aws_iam_policy_document" "execution" {
+  # Split in two because only one of these actions genuinely requires "*".
+  # Lumping them together grants the repository-scoped actions across every
+  # repository in the account for no reason — which is exactly what the
+  # no-wildcard-iam policy caught when it was written that way.
   statement {
-    sid    = "PullImage"
+    sid       = "GetRegistryToken"
+    effect    = "Allow"
+    actions   = ["ecr:GetAuthorizationToken"]
+    resources = ["*"] # AWS rejects a resource ARN on this action.
+  }
+
+  statement {
+    sid    = "PullOwnImage"
     effect = "Allow"
     actions = [
-      "ecr:GetAuthorizationToken",
       "ecr:BatchCheckLayerAvailability",
       "ecr:GetDownloadUrlForLayer",
       "ecr:BatchGetImage",
     ]
-    # GetAuthorizationToken is account-scoped and cannot be resource-scoped;
-    # the rest are constrained to this service's own repository below.
-    resources = ["*"]
+    resources = [aws_ecr_repository.main.arn]
   }
 
   statement {
