@@ -1,0 +1,34 @@
+{
+  "resource_changes": [
+    {
+      "address": "aws_s3_bucket.data",
+      "type": "aws_s3_bucket",
+      "change": {
+        "actions": [
+          "create"
+        ],
+        "after": {
+          "bucket": "payments-data",
+          "tags_all": {
+            "Owner": "team-x",
+            "Environment": "dev"
+          }
+        }
+      }
+    },
+    {
+      "address": "aws_s3_bucket_public_access_block.data",
+      "type": "aws_s3_bucket_public_access_block",
+      "change": {
+        "actions": [
+          "create"
+        ],
+        "after": {
+          "bucket": "payments-data",
+          "block_public_acls": true,
+          "block_public_policy": true
+        }
+      }
+    }
+  ]
+}

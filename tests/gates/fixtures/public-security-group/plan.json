@@ -1,0 +1,29 @@
+{
+  "resource_changes": [
+    {
+      "address": "aws_security_group.task",
+      "type": "aws_security_group",
+      "change": {
+        "actions": [
+          "create"
+        ],
+        "after": {
+          "name": "payments-dev-task",
+          "ingress": [
+            {
+              "from_port": 8080,
+              "to_port": 8080,
+              "cidr_blocks": [
+                "0.0.0.0/0"
+              ]
+            }
+          ],
+          "tags_all": {
+            "Owner": "team-x",
+            "Environment": "dev"
+          }
+        }
+      }
+    }
+  ]
+}

@@ -1,0 +1,20 @@
+{
+  "resource_changes": [
+    {
+      "address": "aws_ecs_task_definition.main",
+      "type": "aws_ecs_task_definition",
+      "change": {
+        "actions": [
+          "create"
+        ],
+        "after": {
+          "container_definitions": "[{\"name\":\"web\",\"image\":\"registry/app@sha256:abc\",\"user\":\"root\",\"readonlyRootFilesystem\":true,\"environment\":[],\"logConfiguration\":{\"logDriver\":\"awslogs\"}}]",
+          "tags_all": {
+            "Owner": "team-x",
+            "Environment": "dev"
+          }
+        }
+      }
+    }
+  ]
+}

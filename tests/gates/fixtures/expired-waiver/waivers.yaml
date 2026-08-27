@@ -1,0 +1,8 @@
+# Breaks exactly one rule: the waiver is past its expiry date.
+# Suppression without renewal is how a security gate quietly stops covering
+# anything while the build stays green.
+waivers:
+  - id: https://github.com/advisories/GHSA-fixture
+    owner: team-payments
+    reason: Waiting on an upstream release.
+    expires: 2024-01-01

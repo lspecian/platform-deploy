@@ -1,0 +1,87 @@
+{
+  "resource_changes": [
+    {
+      "address": "aws_ecs_task_definition.main",
+      "type": "aws_ecs_task_definition",
+      "change": {
+        "actions": [
+          "create"
+        ],
+        "after": {
+          "container_definitions": "[{\"name\":\"web\",\"image\":\"registry/app@sha256:abc\",\"user\":\"1000:1000\",\"readonlyRootFilesystem\":true,\"environment\":[{\"name\":\"PORT\",\"value\":\"8080\"}],\"logConfiguration\":{\"logDriver\":\"awslogs\"}}]",
+          "tags_all": {
+            "Owner": "team-x",
+            "Environment": "dev"
+          }
+        }
+      }
+    },
+    {
+      "address": "aws_security_group.alb",
+      "type": "aws_security_group",
+      "change": {
+        "actions": [
+          "create"
+        ],
+        "after": {
+          "name": "payments-dev-alb",
+          "ingress": [
+            {
+              "from_port": 80,
+              "to_port": 80,
+              "cidr_blocks": [
+                "0.0.0.0/0"
+              ]
+            }
+          ],
+          "tags_all": {
+            "Owner": "team-x",
+            "Environment": "dev"
+          }
+        }
+      }
+    },
+    {
+      "address": "aws_s3_bucket.data",
+      "type": "aws_s3_bucket",
+      "change": {
+        "actions": [
+          "create"
+        ],
+        "after": {
+          "bucket": "payments-data",
+          "tags_all": {
+            "Owner": "team-x",
+            "Environment": "dev"
+          }
+        }
+      }
+    },
+    {
+      "address": "aws_s3_bucket_server_side_encryption_configuration.data",
+      "type": "aws_s3_bucket_server_side_encryption_configuration",
+      "change": {
+        "actions": [
+          "create"
+        ],
+        "after": {
+          "bucket": "payments-data"
+        }
+      }
+    },
+    {
+      "address": "aws_s3_bucket_public_access_block.data",
+      "type": "aws_s3_bucket_public_access_block",
+      "change": {
+        "actions": [
+          "create"
+        ],
+        "after": {
+          "bucket": "payments-data",
+          "block_public_acls": true,
+          "block_public_policy": true
+        }
+      }
+    }
+  ]
+}

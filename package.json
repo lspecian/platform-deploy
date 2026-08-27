@@ -2,11 +2,12 @@
   "name": "tarmac",
   "private": true,
   "version": "0.1.0",
-  "description": "Tarmac — an internal paved-road delivery platform",
+  "description": "Tarmac \u2014 an internal paved-road delivery platform",
   "workspaces": [
     "apps/*",
     "platform/validate",
-    "platform/cli"
+    "platform/cli",
+    "tests/gates"
   ],
   "engines": {
     "node": ">=22"

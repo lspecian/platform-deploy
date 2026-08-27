@@ -1,0 +1,7 @@
+# Breaks exactly one rule: no owner.
+# A service with no owning team is a service nobody is paged for.
+apiVersion: tarmac/v1
+name: orphan-service
+runtime:
+  type: container
+  port: 8080
