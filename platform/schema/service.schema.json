@@ -1,0 +1,112 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://tarmac.internal/schema/service/v1",
+  "title": "Tarmac service manifest",
+  "description": "The contract between an application team and the platform. This file is the only infrastructure surface an application developer touches.",
+  "type": "object",
+  "required": ["apiVersion", "name", "owner", "runtime"],
+  "additionalProperties": false,
+  "properties": {
+    "apiVersion": {
+      "const": "tarmac/v1",
+      "description": "Pinned so the platform can evolve the contract without silently reinterpreting old manifests."
+    },
+    "name": {
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9-]{1,38}[a-z0-9]$",
+      "description": "Lowercase DNS-safe name. Becomes the cluster service name, log group, and load balancer target group, all of which have their own character rules; this pattern is the intersection."
+    },
+    "owner": {
+      "type": "string",
+      "pattern": "^team-[a-z0-9][a-z0-9-]*$",
+      "description": "Owning team, never an individual. People change teams and leave; a service with a departed owner is a service nobody is paged for."
+    },
+    "description": { "type": "string", "maxLength": 200 },
+    "runtime": {
+      "type": "object",
+      "required": ["type", "port"],
+      "additionalProperties": false,
+      "properties": {
+        "type": { "enum": ["container"] },
+        "port": {
+          "type": "integer",
+          "minimum": 1024,
+          "maximum": 65535,
+          "description": "Ports below 1024 require the container to start as root, which the hardening policy forbids."
+        },
+        "cpu": { "enum": [256, 512, 1024, 2048, 4096], "default": 256 },
+        "memory": { "type": "integer", "minimum": 512, "maximum": 30720, "default": 512 },
+        "healthcheck": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "liveness": { "type": "string", "pattern": "^/", "default": "/healthz" },
+            "readiness": { "type": "string", "pattern": "^/", "default": "/readyz" }
+          }
+        }
+      }
+    },
+    "resources": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "bucket": {
+          "type": "object",
+          "required": ["name"],
+          "additionalProperties": false,
+          "properties": {
+            "name": { "type": "string", "pattern": "^[a-z0-9][a-z0-9.-]{1,61}[a-z0-9]$" },
+            "versioning": { "type": "boolean", "default": false }
+          }
+        },
+        "queue": {
+          "type": "object",
+          "required": ["name"],
+          "additionalProperties": false,
+          "properties": {
+            "name": { "type": "string", "pattern": "^[a-zA-Z0-9_-]{1,80}$" },
+            "fifo": { "type": "boolean", "default": false }
+          }
+        }
+      }
+    },
+    "environments": {
+      "type": "object",
+      "additionalProperties": false,
+      "minProperties": 1,
+      "properties": {
+        "dev": { "$ref": "#/$defs/environment" },
+        "staging": { "$ref": "#/$defs/environment" },
+        "prod": { "$ref": "#/$defs/environment" }
+      }
+    },
+    "slo": {
+      "type": "object",
+      "required": ["availability"],
+      "additionalProperties": false,
+      "properties": {
+        "availability": {
+          "type": "number",
+          "minimum": 90,
+          "maximum": 100,
+          "exclusiveMaximum": 100,
+          "description": "100% is not an achievable target; a manifest claiming it is describing a wish, not an objective."
+        },
+        "latency_p95_ms": { "type": "integer", "minimum": 1, "maximum": 60000 }
+      }
+    }
+  },
+  "$defs": {
+    "environment": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "replicas": { "type": "integer", "minimum": 1, "maximum": 10, "default": 1 },
+        "approval": {
+          "enum": ["required", "automatic"],
+          "description": "Whether a deploy to this environment waits for a human."
+        }
+      }
+    }
+  }
+}

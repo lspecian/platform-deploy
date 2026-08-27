@@ -1,0 +1,39 @@
+# The contract between this service and the platform.
+#
+# This is the only infrastructure surface an application developer touches.
+# Terraform reads it, the pipeline validates it, and nothing here is optional
+# ceremony. Run `tarmac validate` before pushing.
+apiVersion: tarmac/v1
+
+name: hello-world
+owner: team-platform
+description: Reference service demonstrating the paved road.
+
+runtime:
+  type: container
+  port: 8080
+  cpu: 256
+  memory: 512
+  healthcheck:
+    liveness: /healthz
+    readiness: /readyz
+
+resources:
+  bucket:
+    name: hello-world-assets
+    versioning: true
+
+environments:
+  dev:
+    replicas: 1
+    approval: automatic
+  staging:
+    replicas: 1
+    approval: automatic
+  prod:
+    replicas: 2
+    approval: required
+
+slo:
+  availability: 99.9
+  latency_p95_ms: 300
