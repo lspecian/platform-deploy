@@ -76,8 +76,38 @@ register_targets_locally() {
   export AWS_DEFAULT_REGION="$(awk -F'"' '/^region/ {print $2}' "${VAR_FILE}")"
   export AWS_ENDPOINT_URL="${endpoint}"
 
-  for container in $(docker ps --filter "name=ministack-ecs" --format '{{.Names}}'); do
-    ip="$(docker inspect -f '{{range .NetworkSettings.Networks}}{{.IPAddress}}{{end}}' "${container}" 2>/dev/null || true)"
+  # Deregister whatever is currently in the group first.
+  #
+  # register-targets is additive, so without this the group accumulates the IPs
+  # of every task that has ever been deployed — including stopped ones and, if
+  # anything ever registers across environments, another environment's tasks.
+  # The load balancer would then round-robin between the new version and
+  # whatever ghosts remain, which looks exactly like a flaky deploy.
+  #
+  # Real ECS deregisters as tasks stop. The emulator does not, so the road does.
+  local existing
+  existing="$(aws elbv2 describe-target-health --target-group-arn "${TARGET_GROUP}" \
+    --query 'TargetHealthDescriptions[].Target.Id' --output text 2>/dev/null || true)"
+  for old_target in ${existing}; do
+    [[ -n "${old_target}" && "${old_target}" != "None" ]] || continue
+    aws elbv2 deregister-targets --target-group-arn "${TARGET_GROUP}" \
+      --targets "Id=${old_target},Port=${port}" >/dev/null 2>&1 || true
+  done
+
+  # Ask *this* environment's emulator which tasks it is running, and map each
+  # to its container through the runtime id. Matching on container name alone
+  # would sweep up every other environment's tasks — they all share the host's
+  # Docker daemon and the same name prefix.
+  local task_arns runtime_ids
+  task_arns="$(aws ecs list-tasks --cluster "${CLUSTER}" --query 'taskArns' --output text 2>/dev/null || true)"
+  [[ -n "${task_arns}" && "${task_arns}" != "None" ]] || fail "no running tasks in ${CLUSTER}"
+
+  runtime_ids="$(aws ecs describe-tasks --cluster "${CLUSTER}" --tasks ${task_arns} \
+    --query 'tasks[].containers[].runtimeId' --output text 2>/dev/null || true)"
+
+  for runtime_id in ${runtime_ids}; do
+    [[ -n "${runtime_id}" && "${runtime_id}" != "None" ]] || continue
+    ip="$(docker inspect -f '{{range .NetworkSettings.Networks}}{{.IPAddress}}{{end}}' "${runtime_id}" 2>/dev/null || true)"
     [[ -n "${ip}" ]] || continue
     aws elbv2 register-targets \
       --target-group-arn "${TARGET_GROUP}" \

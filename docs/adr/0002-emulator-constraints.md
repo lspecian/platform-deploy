@@ -132,9 +132,59 @@ endpoint. No environment variables are set and the exception never applies.
 
 ---
 
+## 6. Task ports are published to the host, so environments collide
+
+**Observed.** Deploying a second environment left its ECS API reporting a
+running task while no container existed. The emulator's log had the reason:
+`Bind for 0.0.0.0:8080 failed: port is already allocated`.
+
+**Cause.** The emulator publishes every task's container port onto the host.
+Two environments running the same service therefore ask for the same host port,
+and the second task never starts. Real ECS with `awsvpc` networking publishes
+nothing to a host at all, so this cannot happen there.
+
+**Decision.** Each environment publishes on its own host port — dev 8080,
+staging 8081, prod 8082 — set through `hostPort` in the task definition and
+applied only when the target is local. On AWS the field is omitted entirely,
+because a `hostPort` differing from `containerPort` is rejected under `awsvpc`.
+
+**On real AWS.** Not applicable.
+
+---
+
+## 7. Stopped tasks are never deregistered from a target group
+
+**Observed.** After a failed deploy and a retry, a target group contained the
+addresses of two different environments' containers. The load balancer
+round-robined between them, so the same URL returned a different environment on
+alternate requests — which reads exactly like a flaky deploy.
+
+**Cause.** `RegisterTargets` is additive, and nothing deregisters a task when it
+stops. Every address a target group has ever been given stays in it.
+
+**Decision.** The deploy step deregisters every existing target before
+registering the current ones, so the group converges on exactly the tasks that
+are running now.
+
+**On real AWS.** ECS deregisters task addresses as tasks stop.
+
+This one was found only by deploying a *second* environment. Everything looked
+correct with one.
+
+---
+
 ## What this list is for
 
-Five divergences, all found in one timeboxed spike, all absorbed by four
-conditionals in platform code and none in application code. That ratio is the
-actual claim being made here: the emulator is close enough to AWS that a service
-team never sees the difference.
+Seven divergences. Five were found by the timeboxed spike before anything was
+built; two more surfaced later, and both only when a *second* environment was
+deployed — with one environment everything looked correct.
+
+All seven are absorbed by six conditionals in platform code and none in
+application code. That ratio is the actual claim: the emulator is close enough
+to AWS that a service team never sees the difference, and where it is not, the
+road absorbs it rather than passing it on.
+
+The two late findings are the more interesting half. A single-environment demo
+would have shipped with both bugs latent, and both would have appeared for the
+first time during a promotion to staging — which is precisely when nobody wants
+to be debugging the platform.

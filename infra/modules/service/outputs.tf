@@ -1,6 +1,6 @@
 output "service_url" {
   description = "Where the service answers. Against the emulator this is the load balancer's path-prefixed data-plane form; against AWS it is the load balancer's DNS name."
-  value       = var.is_local ? "http://localhost:4566/_alb/${aws_lb.main.name}/" : "http://${aws_lb.main.dns_name}"
+  value       = var.is_local ? "${var.endpoint}/_alb/${aws_lb.main.name}/" : "http://${aws_lb.main.dns_name}"
 }
 
 output "load_balancer_name" {

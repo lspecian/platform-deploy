@@ -85,3 +85,23 @@ variable "availability_zones" {
   description = "Override the derived availability zones. Empty means derive them from the region."
   default     = []
 }
+
+variable "endpoint" {
+  type        = string
+  description = "Emulator endpoint for this environment. Each environment runs its own instance on its own port, so this cannot be assumed."
+  default     = "http://localhost:4566"
+}
+
+variable "host_port" {
+  type        = number
+  description = <<-EOT
+    Host port to publish the task on. Emulator only.
+
+    The emulator publishes every task port to the host, so two environments
+    running the same service collide on the same port and the second task fails
+    to start. Real ECS with awsvpc networking publishes nothing to a host, so
+    this is set only when is_local and omitted entirely on AWS — where a
+    hostPort differing from containerPort would be rejected.
+  EOT
+  default     = 8080
+}

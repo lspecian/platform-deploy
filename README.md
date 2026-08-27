@@ -173,9 +173,10 @@ push is a pipeline that can bill you on a push.
 LocalStack was the obvious choice and was rejected: its free tier no longer
 includes ECS, ECR or ELBv2, so the deploy stage would have had to be simulated.
 [MiniStack](https://github.com/ministackorg/ministack) has them free and runs
-real containers. Five behaviours where it differs from AWS were found by a
-timeboxed spike *before* anything was built on it, and all five are absorbed by
-four conditionals in platform code and none in application code —
+real containers. Seven behaviours where it differs from AWS are documented — five found by a
+timeboxed spike *before* anything was built on it, two more surfaced by
+deploying a second environment — and all are absorbed by conditionals in
+platform code and none in application code —
 [ADR 0002](docs/adr/0002-emulator-constraints.md).
 
 ---

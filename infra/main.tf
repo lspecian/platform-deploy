@@ -28,6 +28,12 @@ locals {
 
   bucket = try(local.manifest.resources.bucket, null)
 
+  # Each environment publishes on its own host port. The emulator maps task
+  # ports onto the host, so without this the second environment's task cannot
+  # start. Irrelevant on AWS, where nothing is published to a host at all.
+  host_port_offset = { dev = 0, staging = 1, prod = 2 }
+  host_port        = local.port + lookup(local.host_port_offset, var.environment, 0)
+
   # Environment-scoped so the same manifest yields non-colliding resources in
   # each environment, and so a name in a log or console makes it obvious which
   # environment it belongs to.
@@ -43,6 +49,8 @@ module "service" {
   environment = var.environment
   region      = var.region
   is_local    = local.is_local
+  endpoint    = var.endpoint
+  host_port   = local.host_port
 
   image    = var.image
   port     = local.port

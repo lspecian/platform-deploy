@@ -59,7 +59,13 @@ resource "aws_ecs_task_definition" "main" {
       # writable temp directory to exist.
       mountPoints = [{ sourceVolume = "tmp", containerPath = "/tmp", readOnly = false }]
 
-      portMappings = [{ containerPort = var.port, protocol = "tcp" }]
+      portMappings = [merge(
+        { containerPort = var.port, protocol = "tcp" },
+        # See the host_port variable: emulator-only, to stop environments
+        # colliding on the host. Omitted on AWS, where awsvpc requires
+        # hostPort to equal containerPort.
+        var.is_local ? { hostPort = var.host_port } : {},
+      )]
 
       environment = concat(
         [
