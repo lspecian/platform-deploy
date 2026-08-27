@@ -16,6 +16,36 @@ encryption_change(bucket) := {
 	"change": {"actions": ["create"], "after": {"bucket": bucket}},
 }
 
+# What Terraform actually emits when the bucket reference is computed during
+# apply: the key is *absent* from `after` and flagged in `after_unknown`. The
+# first version of these tests used `bucket: null`, which is a shape Terraform
+# never produces — so the tests passed while the rule did not work on a real
+# plan. Copied from actual `terraform show -json` output.
+encryption_unresolved := {
+	"address": "aws_s3_bucket_server_side_encryption_configuration.main",
+	"type": "aws_s3_bucket_server_side_encryption_configuration",
+	"change": {
+		"actions": ["create"],
+		"after": {"expected_bucket_owner": null},
+		"after_unknown": {"bucket": true, "id": true},
+	},
+}
+
+block_unresolved := {
+	"address": "aws_s3_bucket_public_access_block.main",
+	"type": "aws_s3_bucket_public_access_block",
+	"change": {
+		"actions": ["create"],
+		"after": {
+			"block_public_acls": true,
+			"block_public_policy": true,
+			"ignore_public_acls": true,
+			"restrict_public_buckets": true,
+		},
+		"after_unknown": {"bucket": true, "id": true},
+	},
+}
+
 block_change(bucket) := {
 	"address": "aws_s3_bucket_public_access_block.main",
 	"type": "aws_s3_bucket_public_access_block",
@@ -39,14 +69,14 @@ test_encrypted_and_blocked_bucket_is_allowed if {
 }
 
 test_unknown_bucket_reference_at_plan_time_is_allowed if {
-	# Terraform frequently cannot resolve the bucket reference during a plan and
-	# leaves it null. With exactly one bucket and one config being created
-	# together the pairing is unambiguous, and failing here would block every
-	# first-time apply.
+	# Terraform cannot resolve the bucket reference during a plan, so the key is
+	# absent from `after` and flagged in `after_unknown`. With exactly one bucket
+	# and one config being created together the pairing is unambiguous, and
+	# failing here would block every first-time apply.
 	plan := {"resource_changes": [
 		bucket_change("assets"),
-		encryption_change(null),
-		block_change(null),
+		encryption_unresolved,
+		block_unresolved,
 	]}
 	count(findings(encryption)) == 0 with input as plan
 	count(findings(public_bucket)) == 0 with input as plan

@@ -38,3 +38,16 @@ container_definitions contains entry if {
 	some container in defs
 	entry := {"task": address(task), "container": container}
 }
+
+# True when an attribute cannot be resolved until apply.
+#
+# Terraform omits such attributes from `change.after` entirely and flags them in
+# `change.after_unknown`. A rule that checks `after.foo == null` is therefore
+# checking the wrong thing: the key is absent, not null, so the comparison is
+# undefined and the rule silently does not fire.
+#
+# This is exactly how the storage rules were first written, and they passed
+# locally against stale state while failing on a fresh plan in CI.
+unknown_at_plan_time(rc, key) if {
+	rc.change.after_unknown[key] == true
+}

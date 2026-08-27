@@ -35,13 +35,13 @@ encrypted(bucket_name) if {
 }
 
 encrypted(bucket_name) if {
-	# Terraform often cannot resolve the bucket reference at plan time, leaving
-	# it unknown. Fall back to matching on count when exactly one bucket and one
-	# encryption config are being created together — the unambiguous case.
+	# The bucket reference usually points at an attribute computed during apply,
+	# so it is unknown while planning. With exactly one bucket and one encryption
+	# configuration being created together, the pairing is unambiguous.
 	count(resources("aws_s3_bucket")) == 1
 	count(resources("aws_s3_bucket_server_side_encryption_configuration")) == 1
 	some config in resources("aws_s3_bucket_server_side_encryption_configuration")
-	after(config).bucket == null
+	unknown_at_plan_time(config, "bucket")
 	bucket_name != ""
 }
 
@@ -70,7 +70,10 @@ public_access_blocked(bucket_name) if {
 	count(resources("aws_s3_bucket")) == 1
 	count(resources("aws_s3_bucket_public_access_block")) == 1
 	some block in resources("aws_s3_bucket_public_access_block")
-	after(block).bucket == null
+	unknown_at_plan_time(block, "bucket")
+	# These are literals in the module, so they are known even when the bucket
+	# reference is not. The rule still checks them.
 	after(block).block_public_acls == true
+	after(block).block_public_policy == true
 	bucket_name != ""
 }

@@ -64,7 +64,7 @@ jobs:
         run: opa test platform/policy -v
 
       - name: Guardrail verification
-        run: npm test --workspace @tarmac/gate-tests
+        run: npm run test:gates --workspace @tarmac/gate-tests
 
       - name: Assert no guardrail test was skipped
         # A skipped test reports as a pass. Since every scanner is installed
@@ -72,7 +72,7 @@ jobs:
         # unverified while the build stayed green — the precise failure this
         # suite is built to catch, so it fails the build.
         run: |
-          output=$(npm test --workspace @tarmac/gate-tests 2>&1)
+          output=$(npm run test:gates --workspace @tarmac/gate-tests 2>&1)
           echo "$output"
           if grep -qE '[0-9]+ skipped' <<<"$output"; then
             echo "::error::A guardrail test was skipped. Every scanner must be present in CI."
