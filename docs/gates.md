@@ -95,6 +95,12 @@ is what surfaced it.
 
 ---
 
+## Verified in practice
+
+ReviewBot's comment on a pull request is checked by opening one. The suite that
+tests the guardrails is itself the thing most likely to rot, so the claims in
+this document are exercised rather than asserted.
+
 ## Where gates run
 
 | Stage | Gates |
