@@ -36,8 +36,14 @@ up: emulator-start build deploy ## Bring up everything and deploy to dev
 # ---------------------------------------------------------------------------
 
 .PHONY: install
-install: ## Install dependencies
+install: ## Install dependencies and the git hooks
 	npm install
+	@$(MAKE) hooks
+
+.PHONY: hooks
+hooks: ## Install the git pre-commit hook
+	@git config core.hooksPath .githooks
+	@echo "pre-commit hook installed (validates service.yaml with the same code CI runs)"
 
 .PHONY: tools
 tools: ## Download opa and gitleaks into .tools/

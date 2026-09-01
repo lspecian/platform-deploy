@@ -1,0 +1,37 @@
+#!/usr/bin/env bash
+#
+# Validates the service manifest before a commit lands.
+#
+# Runs the same code CI runs — @tarmac/validate — so local and CI cannot
+# disagree about whether a manifest is valid. A hook that reimplements the check
+# is a hook that will eventually disagree with the gate, and then nobody trusts
+# either.
+#
+# Deliberately fast and narrow. A pre-commit hook that runs the full test suite
+# is a hook people disable with --no-verify within a week, and once that habit
+# exists it applies to every hook.
+set -euo pipefail
+
+REPO_ROOT="$(git rev-parse --show-toplevel)"
+VALIDATOR="${REPO_ROOT}/platform/validate/dist/cli.js"
+
+# Only manifests staged in this commit.
+manifests="$(git diff --cached --name-only --diff-filter=ACM | grep -E '(^|/)service\.yaml$' || true)"
+[[ -n "${manifests}" ]] || exit 0
+
+if [[ ! -f "${VALIDATOR}" ]]; then
+  echo "pre-commit: validator not built, skipping. Run 'npm run build --workspace @tarmac/validate'." >&2
+  exit 0
+fi
+
+failed=0
+while IFS= read -r manifest; do
+  [[ -n "${manifest}" ]] || continue
+  node "${VALIDATOR}" "${REPO_ROOT}/${manifest}" || failed=1
+done <<<"${manifests}"
+
+if [[ "${failed}" -ne 0 ]]; then
+  echo >&2
+  echo "pre-commit: fix the manifest, or commit with --no-verify if you know why." >&2
+  exit 1
+fi

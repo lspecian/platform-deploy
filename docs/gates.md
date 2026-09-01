@@ -50,11 +50,10 @@ than fixed, and the road becomes a bottleneck instead of a road.
 
 | Gate | Reports | Why it does not block |
 |---|---|---|
-| **Bundle size** | Frontend asset size delta | Growth is often legitimate. A hard cap gets raised the first time it is inconvenient, and then means nothing |
-| **Coverage delta** | Change in coverage | The floor already blocks. Blocking on the delta too punishes refactors that delete tested code |
-| **Low and moderate vulnerabilities** | Findings below the blocking threshold | Constant, mostly transitive, rarely actionable that day. Blocking here is how teams learn to ignore vulnerability output entirely |
-| **SBOM** | What is actually in the image | An inventory, not a judgement |
-| **Cost estimate** | Infrastructure cost delta | A reviewer should see it. Only a human can say whether it is worth it |
+| **Bundle size** | Frontend asset size, in the job summary | Growth is often legitimate. A hard cap gets raised the first time it is inconvenient, and then means nothing |
+| **Low and moderate vulnerabilities** | Findings below the blocking threshold, printed by the audit step | Constant, mostly transitive, rarely actionable that day. Blocking here is how teams learn to ignore vulnerability output entirely |
+| **SBOM** | An inventory of what is in the image, uploaded as an artifact | A list, not a judgement |
+| **ReviewBot comment** | Every gate result and what to do about the failures | The pull request is where a reviewer already is |
 
 ---
 
@@ -120,6 +119,16 @@ of them without noticing the other exists.
 
 ## What is deliberately not gated
 
+- **Cost estimation.** Worth having, and not built. It needs a pricing source
+  (Infracost or the AWS pricing API) and a baseline to diff against, and a cost
+  number nobody has calibrated is a number reviewers learn to scroll past. Named
+  here rather than listed as a gate that exists.
+- **Coverage delta.** The coverage floor blocks, which covers the case that
+  matters. Reporting the delta as well needs a stored baseline per branch; it
+  was not worth the machinery for the value.
+- **SBOM diff.** The SBOM is generated and attached to every build. Diffing it
+  against the previous build needs somewhere to keep the previous one, which is
+  artifact retention policy this project does not have.
 - **Performance regression.** No load test, so any threshold would be invented.
 - **Licence compliance.** Real concern, needs a policy this project does not have.
 - **Infrastructure drift detection.** Belongs on a schedule, not in a pipeline.

@@ -88,9 +88,35 @@ describe("the generated Dockerfile", () => {
 describe("generating files", () => {
   it("produces a small, readable set", () => {
     // A scaffold that emits two hundred files is one nobody reads, so people
-    // keep whatever it produced whether or not it fits.
+    // keep whatever it produced whether or not it fits. Nine is about the limit
+    // for something a developer will actually read before their first commit.
+    expect(generate(OPTIONS).map((f) => f.path)).toEqual([
+      "service.yaml",
+      ".github/workflows/ci.yml",
+      "README.md",
+      "Dockerfile",
+      "package.json",
+      "tsconfig.json",
+      "src/server.ts",
+      "test/server.test.ts",
+      ".gitignore",
+    ]);
+  });
+
+  it("emits everything the generated Dockerfile needs to build", () => {
+    // The first version emitted a Dockerfile running `npm ci` and
+    // `node dist/server.js` into a repository with no package.json and no
+    // source. It validated, and it could not build — the failure landed on the
+    // developer's first push, which is the worst possible first impression.
     const files = generate(OPTIONS).map((f) => f.path);
-    expect(files).toEqual(["service.yaml", ".github/workflows/ci.yml", "README.md", "Dockerfile"]);
+    expect(files).toContain("package.json");
+    expect(files).toContain("src/server.ts");
+  });
+
+  it("points the generated pipeline at a repository that exists", () => {
+    // It pointed at a placeholder org, so every scaffolded service failed on
+    // its first run with an unresolvable workflow reference.
+    expect(workflow("payments-api")).toContain("lspecian/platform-deploy");
   });
 
   it("names the owning team in the README", () => {

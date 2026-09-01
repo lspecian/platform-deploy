@@ -17,7 +17,7 @@ Requires Docker and Node 22. No cloud account, no API key, no signup.
 
 ```bash
 git clone https://github.com/lspecian/platform-deploy && cd platform-deploy
-npm install
+npm install     # also installs the pre-commit hook
 make up
 ```
 
@@ -79,7 +79,7 @@ health check, end to end.
 flowchart LR
   PR[pull request] --> G{gates}
   G -->|blocking| B["lint · types · tests+coverage<br/>secrets · deps · SAST<br/>image scan · container policy<br/>manifest · terraform policy"]
-  G -->|reporting| R["bundle size · coverage delta<br/>SBOM · cost"]
+  G -->|reporting| R["bundle size · SBOM<br/>low-severity findings"]
   B --> M[merge to main]
   M --> D[dev]
   D -->|smoke| S[staging]
