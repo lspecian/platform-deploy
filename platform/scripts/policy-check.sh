@@ -9,10 +9,18 @@
 # can pass while the resource actually being created violates it.
 set -euo pipefail
 
-ENVIRONMENT="${1:?usage: policy-check.sh <environment> [target]}"
+ENVIRONMENT="${1:?usage: policy-check.sh <environment> [target] [manifest-path]}"
 TARGET="${2:-local}"
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
+MANIFEST="${3:-${REPO_ROOT}/apps/hello-world/service.yaml}"
+MANIFEST="$(cd "$(dirname "${MANIFEST}")" && pwd)/$(basename "${MANIFEST}")"
+
+# Same keying as the deploy, for the same reason: the plan being checked must be
+# the plan that will be applied. Checking a different workspace's plan would
+# report on infrastructure nobody is about to create.
+SERVICE="$(awk '/^name:/ {print $2; exit}' "${MANIFEST}")"
+WORKSPACE="${SERVICE}-${ENVIRONMENT}"
 OPA="${OPA:-${REPO_ROOT}/.tools/opa}"
 command -v "${OPA}" >/dev/null 2>&1 || OPA="opa"
 
@@ -25,9 +33,9 @@ trap 'rm -f "${PLAN_BIN}" "${PLAN_JSON}"' EXIT
 
 cd "${REPO_ROOT}/infra"
 
-echo "==> Planning ${ENVIRONMENT} (${TARGET})"
+echo "==> Planning ${SERVICE} for ${ENVIRONMENT} (${TARGET})"
 terraform init -input=false -no-color >/dev/null
-terraform workspace select -or-create "${ENVIRONMENT}" >/dev/null 2>&1
+terraform workspace select -or-create "${WORKSPACE}" >/dev/null 2>&1
 # -refresh=false: a policy check evaluates the change being proposed, not the
 # current state of the world. Refreshing would require every resource in state
 # to be reachable, which makes the gate fail when infrastructure is merely
@@ -36,6 +44,7 @@ terraform workspace select -or-create "${ENVIRONMENT}" >/dev/null 2>&1
 terraform plan -input=false -no-color -lock=false -refresh=false \
   -out="${PLAN_BIN}" \
   -var-file="envs/${TARGET}-${ENVIRONMENT}.tfvars" \
+  -var="manifest_path=${MANIFEST}" \
   -var="image=${IMAGE:-registry/hello-world@sha256:0000000000000000000000000000000000000000000000000000000000000000}" \
   >/dev/null
 terraform show -json "${PLAN_BIN}" >"${PLAN_JSON}"

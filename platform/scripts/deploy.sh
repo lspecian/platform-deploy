@@ -9,13 +9,32 @@
 # prove it worked is a deploy that has to be rolled back.
 set -euo pipefail
 
-ENVIRONMENT="${1:?usage: deploy.sh <environment> <target> <image>}"
-TARGET="${2:?usage: deploy.sh <environment> <target> <image>}"
-IMAGE="${3:?usage: deploy.sh <environment> <target> <image>}"
+USAGE="usage: deploy.sh <environment> <target> <image> [manifest-path]"
+ENVIRONMENT="${1:?${USAGE}}"
+TARGET="${2:?${USAGE}}"
+IMAGE="${3:?${USAGE}}"
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 INFRA_DIR="${REPO_ROOT}/infra"
 VAR_FILE="envs/${TARGET}-${ENVIRONMENT}.tfvars"
+
+MANIFEST="${4:-${REPO_ROOT}/apps/hello-world/service.yaml}"
+[[ -f "${MANIFEST}" ]] || { printf "\nFAIL: no manifest at %s\n" "${MANIFEST}" >&2; exit 1; }
+MANIFEST="$(cd "$(dirname "${MANIFEST}")" && pwd)/$(basename "${MANIFEST}")"
+
+# The service name comes from the manifest, never from a flag. The manifest is
+# the contract; a name passed separately is a second source of truth that will
+# eventually disagree with it.
+SERVICE="$(awk '/^name:/ {print $2; exit}' "${MANIFEST}")"
+[[ -n "${SERVICE}" ]] || { printf "\nFAIL: %s has no top-level name\n" "${MANIFEST}" >&2; exit 1; }
+
+# State is keyed on service *and* environment.
+#
+# Keyed on environment alone, a second service deploying to dev would land in
+# the first one's state and take over its resources. That is the difference
+# between a platform and a demo of one: the failure does not appear until the
+# second team arrives, and by then it destroys something.
+WORKSPACE="${SERVICE}-${ENVIRONMENT}"
 
 SMOKE_RETRIES="${SMOKE_RETRIES:-20}"
 SMOKE_INTERVAL="${SMOKE_INTERVAL:-2}"
@@ -33,7 +52,7 @@ cd "${INFRA_DIR}"
 # not possible — the script says so rather than pretending otherwise.
 # ---------------------------------------------------------------------------
 terraform init -input=false -no-color >/dev/null
-terraform workspace select -or-create "${ENVIRONMENT}" >/dev/null 2>&1
+terraform workspace select -or-create "${WORKSPACE}" >/dev/null 2>&1
 
 # -json rather than -raw: on a fresh workspace `terraform output -raw` prints a
 # "no outputs found" warning to stdout, which would otherwise be mistaken for an
@@ -47,7 +66,9 @@ fi
 
 apply() {
   terraform apply -input=false -auto-approve -no-color \
-    -var-file="${VAR_FILE}" -var="image=$1" >/dev/null
+    -var-file="${VAR_FILE}" \
+    -var="image=$1" \
+    -var="manifest_path=${MANIFEST}" >/dev/null
 }
 
 # ---------------------------------------------------------------------------
@@ -72,7 +93,7 @@ if [[ "${TARGET}" == "local" ]] && ! docker image inspect "${IMAGE}" >/dev/null 
     platform/scripts/deploy.sh ${ENVIRONMENT} ${TARGET} <image>"
 fi
 
-step "Applying infrastructure for ${ENVIRONMENT} (${TARGET})"
+step "Deploying ${SERVICE} to ${ENVIRONMENT} (${TARGET})"
 log "image: ${IMAGE}"
 apply "${IMAGE}"
 
@@ -92,7 +113,7 @@ CLUSTER="$(terraform output -raw cluster_name)"
 register_targets_locally() {
   local endpoint port ip registered=0
   endpoint="$(grep -oE 'https?://[^"]+' "${VAR_FILE}" | head -1)"
-  port="$(awk '/^  port:/ {print $2}' "${REPO_ROOT}/apps/hello-world/service.yaml")"
+  port="$(awk '/^  port:/ {print $2; exit}' "${MANIFEST}")"
 
   export AWS_ACCESS_KEY_ID=test AWS_SECRET_ACCESS_KEY=test
   export AWS_DEFAULT_REGION="$(awk -F'"' '/^region/ {print $2}' "${VAR_FILE}")"
@@ -189,17 +210,31 @@ fi
 # ---------------------------------------------------------------------------
 step "Smoke testing ${SERVICE_URL}"
 
+# The readiness path comes from the manifest, because it is the service's to
+# choose. The platform asserts two things only: the service reports itself
+# ready, and the build answering is the build we just deployed.
+READINESS_PATH="$(awk '/^    readiness:/ {print $2; exit}' "${MANIFEST}")"
+READINESS_PATH="${READINESS_PATH:-/readyz}"
+
 smoke() {
   local body
-  body="$(curl -fsS -m 10 "${SERVICE_URL%/}/api/greeting" 2>/dev/null)" || return 1
-  grep -q '"message":"hello world"' <<<"${body}" || return 1
+
+  # Readiness, not a greeting. An earlier version asserted the reference
+  # service's exact response body, which meant every other service failed its
+  # own smoke test — the platform had baked in one service's payload.
+  curl -fsS -m 10 -o /dev/null "${SERVICE_URL%/}${READINESS_PATH}" 2>/dev/null || return 1
+
   if [[ -n "${EXPECT_COMMIT:-}" ]]; then
+    # The assertion that makes this a real check. Without it a smoke test passes
+    # against the *previous* version when the new one never starts, turning a
+    # failed deploy into a green one.
+    body="$(curl -fsS -m 10 "${SERVICE_URL%/}/api/greeting" 2>/dev/null)" || return 1
     grep -q "\"commit\":\"${EXPECT_COMMIT}\"" <<<"${body}" || {
       log "deployed commit does not match ${EXPECT_COMMIT}"
       return 1
     }
+    printf '  %s\n' "${body}"
   fi
-  printf '  %s\n' "${body}"
   return 0
 }
 

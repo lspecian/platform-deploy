@@ -158,6 +158,17 @@ COPY . .
 RUN npm run build
 
 FROM base AS runtime
+
+# Build provenance, injected by the pipeline. The service returns these on
+# /api/greeting so the post-deploy smoke test can assert *which* build is
+# running — without them the smoke test can only prove something answered, and
+# a failed deploy where the old version keeps serving reads as success.
+ARG APP_VERSION=0.0.0-dev
+ARG GIT_COMMIT=unknown
+ENV APP_VERSION=\${APP_VERSION} \\
+    GIT_COMMIT=\${GIT_COMMIT} \\
+    NODE_ENV=production
+
 # The runtime never needs a package manager, and every one of npm's vendored
 # dependencies is attack surface plus a stream of scanner findings.
 RUN apk --no-cache upgrade && rm -rf /usr/local/lib/node_modules/npm \\

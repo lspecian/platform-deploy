@@ -181,6 +181,30 @@ platform code and none in application code —
 
 ---
 
+## Onboarding a second service
+
+The platform is not single-tenant. Terraform state is keyed on **service and
+environment**, so services deployed to the same environment are independent —
+one team's deploy cannot take over another's resources.
+
+```bash
+tarmac new orders-api --owner team-orders
+cd orders-api && npm install
+tarmac validate
+tarmac deploy                     # its own state, own load balancer, own bucket
+```
+
+Every command resolves the service by searching upward for `service.yaml`, the
+way `git` finds its repository. Nothing is configured per service in the
+platform; the manifest is the only input.
+
+This is verified rather than assumed: two services were scaffolded, built and
+deployed into the same environment, and both kept serving after the other's
+deploy. That test is what found four bugs the reference service alone could
+never surface — a smoke test asserting one service's exact response body, a
+scaffolded Dockerfile with no build provenance, host ports that collided, and
+state keyed on environment alone.
+
 ## Layout
 
 ```

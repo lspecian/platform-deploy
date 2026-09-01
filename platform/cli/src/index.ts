@@ -5,6 +5,7 @@ import { fileURLToPath } from "node:url";
 import { validateManifestFile } from "@tarmac/validate";
 import { runDoctor, formatResults, isHealthy } from "./doctor.js";
 import { scaffold } from "./scaffold.js";
+import { resolveService, imageReference } from "./service.js";
 
 /**
  * The developer-facing surface of the paved road.
@@ -27,9 +28,9 @@ const green = (t: string) => paint("32", t);
 
 const REPO_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..", "..", "..");
 
-function run(command: string, args: string[]): number {
+function run(command: string, args: string[], cwd: string = REPO_ROOT): number {
   try {
-    execFileSync(command, args, { stdio: "inherit", cwd: REPO_ROOT });
+    execFileSync(command, args, { stdio: "inherit", cwd });
     return 0;
   } catch (error) {
     return typeof (error as { status?: number }).status === "number"
@@ -60,35 +61,66 @@ ${dim("Environments: dev (default), staging, prod")}
 `);
 }
 
+/** Resolves the service being worked on, or explains why it could not. */
+function currentService(): ReturnType<typeof resolveService> {
+  const resolution = resolveService(process.cwd());
+  if (!resolution.found) {
+    console.error(`${red("No service here")}\n`);
+    console.error(`  ${resolution.reason}`);
+    console.error(dim(`    -> ${resolution.hint}`));
+  }
+  return resolution;
+}
+
 function deploy(environment: string): number {
+  const resolution = currentService();
+  if (!resolution.found) return 1;
+  const { name, manifestPath } = resolution.service;
+
   const commit = execFileSync("git", ["rev-parse", "--short", "HEAD"], {
     encoding: "utf8",
     cwd: REPO_ROOT,
   }).trim();
-  const image = `tarmac/hello-world:${commit}`;
+  const image = imageReference(name, commit);
 
-  console.log(`${bold("Deploying")} ${image} to ${environment}\n`);
+  console.log(`${bold("Deploying")} ${name} ${dim(image)} to ${environment}\n`);
   process.env.EXPECT_COMMIT = commit;
-  return run(join(REPO_ROOT, "platform", "scripts", "deploy.sh"), [environment, "local", image]);
+  return run(join(REPO_ROOT, "platform", "scripts", "deploy.sh"), [
+    environment,
+    "local",
+    image,
+    manifestPath,
+  ]);
 }
 
 function status(environment: string): number {
+  const resolution = currentService();
+  if (!resolution.found) return 1;
+  const { name } = resolution.service;
+
   try {
     const output = execFileSync(
       "terraform",
       ["-chdir=infra", "output", "-json"],
-      { encoding: "utf8", cwd: REPO_ROOT, env: { ...process.env, TF_WORKSPACE: environment } },
+      {
+        encoding: "utf8",
+        cwd: REPO_ROOT,
+        // State is keyed on service and environment, so the workspace has to be
+        // too. Reading the environment's workspace alone would report another
+        // service's deployment as if it were this one's.
+        env: { ...process.env, TF_WORKSPACE: `${name}-${environment}` },
+      },
     );
     const outputs = JSON.parse(output) as Record<string, { value: unknown }>;
     if (Object.keys(outputs).length === 0) throw new Error("empty");
 
-    console.log(`${bold(environment)}`);
+    console.log(`${bold(name)} in ${environment}`);
     console.log(`  url      ${String(outputs.service_url?.value ?? "unknown")}`);
     console.log(`  image    ${String(outputs.image?.value ?? "unknown")}`);
     console.log(`  cluster  ${String(outputs.cluster_name?.value ?? "unknown")}`);
     return 0;
   } catch {
-    console.log(`${environment}: nothing deployed`);
+    console.log(`${name} is not deployed to ${environment}`);
     console.log(dim("  run `tarmac deploy` to bring it up"));
     return 0;
   }
@@ -156,8 +188,14 @@ function main(argv: readonly string[]): number {
       return 1;
     }
 
-    case "dev":
-      return run("npm", ["run", "dev", "--workspace", "@tarmac/hello-world"]);
+    case "dev": {
+      const resolution = currentService();
+      if (!resolution.found) return 1;
+      // Runs the service's own dev script, in the service's own directory. The
+      // platform does not need to know how a service runs locally — that is the
+      // one thing the team owns entirely.
+      return run("npm", ["run", "dev"], dirname(resolution.service.manifestPath));
+    }
 
     case "test":
       return run("npm", ["test", "--workspaces", "--if-present"]);
@@ -175,8 +213,17 @@ function main(argv: readonly string[]): number {
       // Rollback is deploy-with-the-previous-image, which the deploy script
       // already knows how to do when a smoke test fails. Exposing it as its own
       // command means nobody has to remember that.
-      console.log(`${bold("Rolling back")} ${rest[0] ?? "dev"}`);
-      return run(join(REPO_ROOT, "platform", "scripts", "rollback.sh"), [rest[0] ?? "dev", "local"]);
+      {
+        const resolution = currentService();
+        if (!resolution.found) return 1;
+        const environment = rest[0] ?? "dev";
+        console.log(`${bold("Rolling back")} ${resolution.service.name} in ${environment}`);
+        return run(join(REPO_ROOT, "platform", "scripts", "rollback.sh"), [
+          environment,
+          "local",
+          resolution.service.manifestPath,
+        ]);
+      }
 
     default:
       console.error(`Unknown command: ${command}\n`);

@@ -8,10 +8,18 @@ SHELL := /usr/bin/env bash
 
 ENVIRONMENT ?= dev
 TARGET      ?= local
-IMAGE_NAME  ?= tarmac/hello-world
+
+# Which service. Everything else is derived from its manifest, because the
+# manifest is the contract — a service name passed separately is a second
+# source of truth that will eventually disagree with it.
+MANIFEST    ?= apps/hello-world/service.yaml
+SERVICE     := $(shell awk '/^name:/ {print $$2; exit}' $(MANIFEST))
+SERVICE_DIR := $(dir $(MANIFEST))
+
 GIT_COMMIT  := $(shell git rev-parse --short HEAD 2>/dev/null || echo unknown)
 APP_VERSION ?= 0.1.0
-IMAGE       ?= $(IMAGE_NAME):$(GIT_COMMIT)
+IMAGE       ?= tarmac/$(SERVICE):$(GIT_COMMIT)
+WORKSPACE   := $(SERVICE)-$(ENVIRONMENT)
 
 SCRIPTS := platform/scripts
 
@@ -22,7 +30,8 @@ help: ## Show this help
 	@grep -hE '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) \
 		| awk 'BEGIN {FS = ":.*?## "}; {printf "  \033[36m%-18s\033[0m %s\n", $$1, $$2}'
 	@echo
-	@echo "  Variables: ENVIRONMENT=$(ENVIRONMENT) TARGET=$(TARGET)"
+	@echo "  Variables: SERVICE=$(SERVICE) ENVIRONMENT=$(ENVIRONMENT) TARGET=$(TARGET)"
+	@echo "  Another service: make deploy MANIFEST=path/to/service.yaml"
 
 # ---------------------------------------------------------------------------
 # The one command that matters
@@ -62,7 +71,7 @@ build: ## Build the application and its container image
 	npm run build --workspace @tarmac/validate
 	npm run build --workspace @tarmac/cli
 	npm run build --workspace @tarmac/hello-world
-	docker build -f apps/hello-world/Dockerfile -t $(IMAGE) \
+	docker build -f $(SERVICE_DIR)Dockerfile -t $(IMAGE) \
 		--build-arg APP_VERSION=$(APP_VERSION) \
 		--build-arg GIT_COMMIT=$(GIT_COMMIT) .
 
@@ -72,7 +81,7 @@ test: ## Run every test suite
 
 .PHONY: validate
 validate: ## Validate the service manifest (the same check CI runs)
-	node platform/validate/dist/cli.js apps/hello-world/service.yaml
+	node platform/validate/dist/cli.js $(MANIFEST)
 
 .PHONY: check
 check: ## Everything CI checks, locally
@@ -103,11 +112,11 @@ emulator-status: ## Show emulator status
 
 .PHONY: deploy
 deploy: ## Deploy to $(ENVIRONMENT) on $(TARGET)
-	@EXPECT_COMMIT=$(GIT_COMMIT) $(SCRIPTS)/deploy.sh $(ENVIRONMENT) $(TARGET) $(IMAGE)
+	@EXPECT_COMMIT=$(GIT_COMMIT) $(SCRIPTS)/deploy.sh $(ENVIRONMENT) $(TARGET) $(IMAGE) $(MANIFEST)
 
 .PHONY: url
 url: ## Print the deployed service URL
-	@cd infra && terraform workspace select $(ENVIRONMENT) >/dev/null 2>&1 && terraform output -raw service_url && echo
+	@cd infra && terraform workspace select $(WORKSPACE) >/dev/null 2>&1 && terraform output -raw service_url && echo
 
 .PHONY: logs
 logs: ## Tail the service logs
@@ -119,8 +128,9 @@ tf-validate: ## Validate and format-check the Terraform
 
 .PHONY: down
 down: ## Tear down local infrastructure and stop the emulators
-	-cd infra && terraform workspace select $(ENVIRONMENT) >/dev/null 2>&1 && \
-		terraform destroy -auto-approve -var-file=envs/local-$(ENVIRONMENT).tfvars -var="image=$(IMAGE)" >/dev/null 2>&1
+	-cd infra && terraform workspace select $(WORKSPACE) >/dev/null 2>&1 && \
+		terraform destroy -auto-approve -var-file=envs/local-$(ENVIRONMENT).tfvars \
+			-var="image=$(IMAGE)" -var="manifest_path=$(CURDIR)/$(MANIFEST)" >/dev/null 2>&1
 	@$(MAKE) emulator-stop
 
 # ---------------------------------------------------------------------------
@@ -130,9 +140,10 @@ down: ## Tear down local infrastructure and stop the emulators
 .PHONY: deploy-aws
 deploy-aws: build ## Deploy to real AWS (manual, costs money, tagged for teardown)
 	@echo "Deploying to REAL AWS in $(ENVIRONMENT). Everything created is tagged Platform=tarmac."
-	@EXPECT_COMMIT=$(GIT_COMMIT) $(SCRIPTS)/deploy.sh $(ENVIRONMENT) aws $(IMAGE)
+	@EXPECT_COMMIT=$(GIT_COMMIT) $(SCRIPTS)/deploy.sh $(ENVIRONMENT) aws $(IMAGE) $(MANIFEST)
 
 .PHONY: destroy-aws
 destroy-aws: ## Remove everything the road created in real AWS
-	cd infra && terraform workspace select $(ENVIRONMENT) && \
-		terraform destroy -var-file=envs/aws-$(ENVIRONMENT).tfvars -var="image=$(IMAGE)"
+	cd infra && terraform workspace select $(WORKSPACE) && \
+		terraform destroy -var-file=envs/aws-$(ENVIRONMENT).tfvars \
+			-var="image=$(IMAGE)" -var="manifest_path=$(CURDIR)/$(MANIFEST)"

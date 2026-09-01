@@ -83,6 +83,14 @@ describe("the generated Dockerfile", () => {
   it("would pass the container policy: no mutable tag", () => {
     expect(generated).not.toMatch(/FROM node:[\w.-]+\s/);
   });
+
+  it("accepts build provenance, so the smoke test can assert which build is live", () => {
+    // Without GIT_COMMIT the service reports "unknown", the deploy's commit
+    // assertion can never match, and every scaffolded service fails its own
+    // smoke test. Found by deploying a second service.
+    expect(generated).toContain("ARG GIT_COMMIT");
+    expect(generated).toContain("ENV APP_VERSION");
+  });
 });
 
 describe("generating files", () => {

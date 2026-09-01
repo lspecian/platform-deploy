@@ -9,20 +9,25 @@
 # re-applies it, then verifies the service answers.
 set -euo pipefail
 
-ENVIRONMENT="${1:?usage: rollback.sh <environment> [target]}"
+ENVIRONMENT="${1:?usage: rollback.sh <environment> [target] [manifest-path]}"
 TARGET="${2:-local}"
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
+MANIFEST="${3:-${REPO_ROOT}/apps/hello-world/service.yaml}"
+MANIFEST="$(cd "$(dirname "${MANIFEST}")" && pwd)/$(basename "${MANIFEST}")"
+SERVICE="$(awk '/^name:/ {print $2; exit}' "${MANIFEST}")"
+WORKSPACE="${SERVICE}-${ENVIRONMENT}"
+
 cd "${REPO_ROOT}/infra"
 
 terraform init -input=false -no-color >/dev/null
-terraform workspace select "${ENVIRONMENT}" >/dev/null 2>&1 || {
-  echo "FAIL: ${ENVIRONMENT} has never been deployed" >&2
+terraform workspace select "${WORKSPACE}" >/dev/null 2>&1 || {
+  echo "FAIL: ${SERVICE} has never been deployed to ${ENVIRONMENT}" >&2
   exit 1
 }
 
 CURRENT="$(terraform output -json 2>/dev/null | jq -r '.image.value // empty')"
-[[ -n "${CURRENT}" ]] || { echo "FAIL: nothing is deployed to ${ENVIRONMENT}" >&2; exit 1; }
+[[ -n "${CURRENT}" ]] || { echo "FAIL: ${SERVICE} is not deployed to ${ENVIRONMENT}" >&2; exit 1; }
 
 # The previous image is whichever tagged build preceded the current one. Tags
 # here are commit shas, so git ordering is deployment ordering.
@@ -36,8 +41,8 @@ if [[ -z "${PREVIOUS_TAG}" ]]; then
 fi
 
 PREVIOUS="${CURRENT%:*}:${PREVIOUS_TAG}"
-echo "Rolling ${ENVIRONMENT} back from ${CURRENT_TAG} to ${PREVIOUS_TAG}"
+echo "Rolling ${SERVICE} in ${ENVIRONMENT} back from ${CURRENT_TAG} to ${PREVIOUS_TAG}"
 
 # Reuse the deploy path so a rollback is smoke-tested exactly like a deploy.
 # A rollback that is not verified is just a second deploy that might also fail.
-exec "${REPO_ROOT}/platform/scripts/deploy.sh" "${ENVIRONMENT}" "${TARGET}" "${PREVIOUS}"
+exec "${REPO_ROOT}/platform/scripts/deploy.sh" "${ENVIRONMENT}" "${TARGET}" "${PREVIOUS}" "${MANIFEST}"
