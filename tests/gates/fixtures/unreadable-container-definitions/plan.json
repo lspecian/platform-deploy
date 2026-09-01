@@ -1,0 +1,26 @@
+{
+  "resource_changes": [
+    {
+      "address": "aws_ecs_task_definition.main",
+      "type": "aws_ecs_task_definition",
+      "change": {
+        "actions": [
+          "create"
+        ],
+        "after": {
+          "family": "payments",
+          "cpu": "256",
+          "memory": "512",
+          "tags_all": {
+            "Owner": "team-x",
+            "Environment": "dev"
+          }
+        },
+        "after_unknown": {
+          "container_definitions": true,
+          "arn": true
+        }
+      }
+    }
+  ]
+}

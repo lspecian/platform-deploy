@@ -50,6 +50,28 @@ apply() {
     -var-file="${VAR_FILE}" -var="image=$1" >/dev/null
 }
 
+# ---------------------------------------------------------------------------
+# Check the image exists before doing anything else.
+#
+# Without this the deploy proceeds, the emulator fails to pull, and the script
+# reports "no running tasks found to register" — which describes a symptom four
+# steps removed from the cause. The real reason sits in the emulator's own log,
+# where nobody thinks to look. Failing here costs one docker call and turns a
+# confusing dead end into one line naming the missing image.
+# ---------------------------------------------------------------------------
+if [[ "${TARGET}" == "local" ]] && ! docker image inspect "${IMAGE}" >/dev/null 2>&1; then
+  fail "image ${IMAGE} does not exist locally.
+
+  The emulator pulls from the host Docker daemon, so the image has to be built
+  first:
+
+    make build
+
+  If you meant to deploy a different version, pass it explicitly:
+
+    platform/scripts/deploy.sh ${ENVIRONMENT} ${TARGET} <image>"
+fi
+
 step "Applying infrastructure for ${ENVIRONMENT} (${TARGET})"
 log "image: ${IMAGE}"
 apply "${IMAGE}"
@@ -118,9 +140,43 @@ register_targets_locally() {
   [[ "${registered}" -gt 0 ]] || fail "no running tasks found to register"
 }
 
+# ---------------------------------------------------------------------------
+# Clear phantom tasks.
+#
+# When a container fails to start, the emulator still records the task as
+# RUNNING with a runtime id that matches no container. That phantom satisfies
+# the service's desired count, so no replacement is ever started and every
+# subsequent deploy silently does nothing — the service looks healthy and is
+# serving the previous version, or nothing at all.
+#
+# Real ECS reconciles this: a task whose container died is STOPPED, and the
+# service starts a replacement. The emulator does not, so the road does.
+# ---------------------------------------------------------------------------
+stop_phantom_tasks() {
+  local stopped=0 task runtime_id
+  for task in $(aws ecs list-tasks --cluster "${CLUSTER}" --query 'taskArns[]' --output text 2>/dev/null); do
+    [[ -n "${task}" && "${task}" != "None" ]] || continue
+    runtime_id="$(aws ecs describe-tasks --cluster "${CLUSTER}" --tasks "${task}" \
+      --query 'tasks[0].containers[0].runtimeId' --output text 2>/dev/null || true)"
+    if [[ -z "${runtime_id}" ]] || [[ "${runtime_id}" == "None" ]] \
+       || ! docker inspect "${runtime_id}" >/dev/null 2>&1; then
+      aws ecs stop-task --cluster "${CLUSTER}" --task "${task}" \
+        --reason "no container behind this task" >/dev/null 2>&1 && stopped=$((stopped + 1))
+    fi
+  done
+  [[ "${stopped}" -gt 0 ]] && log "cleared ${stopped} phantom task(s)"
+  return 0
+}
+
 if [[ "${TARGET}" == "local" ]]; then
   step "Registering targets (emulator does not do this itself)"
-  sleep 2
+  export AWS_ACCESS_KEY_ID=test AWS_SECRET_ACCESS_KEY=test
+  export AWS_DEFAULT_REGION="$(awk -F'"' '/^region/ {print $2}' "${VAR_FILE}")"
+  export AWS_ENDPOINT_URL="$(grep -oE 'https?://[^"]+' "${VAR_FILE}" | head -1)"
+  stop_phantom_tasks
+  # Re-apply so the service notices it is short a task and starts a real one.
+  apply "${IMAGE}"
+  sleep 3
   register_targets_locally
 fi
 

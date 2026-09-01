@@ -41,7 +41,17 @@ terraform plan -input=false -no-color -lock=false -refresh=false \
 terraform show -json "${PLAN_BIN}" >"${PLAN_JSON}"
 
 echo "==> Evaluating policy"
-FINDINGS="$("${OPA}" eval --format raw --data "${REPO_ROOT}/platform/policy" \
+# Declare the target to the policy engine. The digest requirement is exempt on
+# the local emulator, where a host-built image has no registry digest to pin to,
+# and strict everywhere else. Declaring it explicitly means the strict path is
+# the default and the exemption has to be asked for.
+CONFIG_JSON="$(mktemp -t tarmac-policy-config.XXXXXX)"
+trap 'rm -f "${PLAN_BIN}" "${PLAN_JSON}" "${CONFIG_JSON}"' EXIT
+printf '{"config":{"target":"%s"}}' "${TARGET}" >"${CONFIG_JSON}"
+
+FINDINGS="$("${OPA}" eval --format raw \
+  --data "${REPO_ROOT}/platform/policy" \
+  --data "${CONFIG_JSON}" \
   --input "${PLAN_JSON}" 'data.tarmac.policy.deny')"
 
 COUNT="$(jq 'length' <<<"${FINDINGS}")"

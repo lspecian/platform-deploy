@@ -141,3 +141,77 @@ test_denial_message_names_the_container if {
 	some finding in findings("no-root-container") with input as task_def(with_field("user", "root"))
 	contains(finding.msg, "web")
 }
+
+# ---------------------------------------------------------------------------
+# Fail closed on unreadable container definitions
+#
+# These tests exist because the hole they cover was live. Terraform emits
+# container_definitions as unknown whenever the JSON embeds a value computed
+# during apply, and every rule above then iterated an empty set and reported
+# success. Five guardrails, silently inspecting nothing, on every real plan.
+#
+# The fixtures elsewhere in this file all hand-author a *known* definitions
+# string, which is exactly why they never caught it.
+# ---------------------------------------------------------------------------
+
+task_def_unknown := {"resource_changes": [{
+	"address": "aws_ecs_task_definition.main",
+	"type": "aws_ecs_task_definition",
+	"change": {
+		"actions": ["create"],
+		"after": {"family": "web", "cpu": "256"},
+		"after_unknown": {"container_definitions": true, "arn": true},
+	},
+}]}
+
+test_unreadable_container_definitions_are_denied if {
+	count(findings("container-definitions-unreadable")) == 1 with input as task_def_unknown
+}
+
+test_readable_container_definitions_are_not_flagged_as_unreadable if {
+	count(findings("container-definitions-unreadable")) == 0 with input as task_def(good_container)
+}
+
+test_the_unreadable_message_explains_the_cause if {
+	# The developer hitting this needs to know it means "reference a derived
+	# name instead of a resource attribute", not just that something failed.
+	some finding in findings("container-definitions-unreadable") with input as task_def_unknown
+	contains(finding.msg, "computed during apply")
+}
+
+# ---------------------------------------------------------------------------
+# The digest requirement is target-aware, and defaults to strict
+# ---------------------------------------------------------------------------
+
+tagged_container := object.union(good_container, {"image": "tarmac/hello-world:9b09049"})
+
+test_a_tag_is_allowed_on_the_local_target if {
+	# A host-built image never pushed to a registry has no digest to pin to.
+	count(findings("immutable-image")) == 0 with input as task_def(tagged_container)
+		with data.config.target as "local"
+}
+
+test_a_tag_is_denied_on_aws if {
+	count(findings("immutable-image")) == 1 with input as task_def(tagged_container)
+		with data.config.target as "aws"
+}
+
+test_a_tag_is_denied_when_the_target_is_undeclared if {
+	# Fail closed. A policy that relaxes when unsure of its context is a policy
+	# that can be relaxed by forgetting to configure it.
+	count(findings("immutable-image")) == 1 with input as task_def(tagged_container)
+}
+
+test_latest_is_denied_even_on_the_local_target if {
+	# The exemption covers a missing digest, never a mutable tag.
+	container := object.union(good_container, {"image": "tarmac/hello-world:latest"})
+	count(findings("immutable-image")) == 1 with input as task_def(container)
+		with data.config.target as "local"
+}
+
+test_a_digest_is_allowed_on_every_target if {
+	count(findings("immutable-image")) == 0 with input as task_def(good_container)
+		with data.config.target as "aws"
+	count(findings("immutable-image")) == 0 with input as task_def(good_container)
+		with data.config.target as "local"
+}

@@ -1,6 +1,34 @@
 package tarmac.policy
 
 # ---------------------------------------------------------------------------
+# Fail closed when the container definitions cannot be read.
+#
+# This rule exists because its absence was a real, silent hole. Terraform emits
+# `container_definitions` as unknown whenever the JSON embeds a value computed
+# during apply — a bucket id, an ARN. The attribute is then missing from
+# `change.after`, `json.unmarshal` yields nothing, and every rule below iterates
+# an empty set. Five guardrails reported success while inspecting nothing.
+#
+# A policy engine that cannot see its input must not approve it. Anything else
+# is a gate that is strongest against the plans it can read and absent from the
+# ones it cannot, which is precisely backwards.
+# ---------------------------------------------------------------------------
+
+deny contains finding if {
+	some task in resources("aws_ecs_task_definition")
+	unknown_at_plan_time(task, "container_definitions")
+
+	finding := {
+		"rule": "container-definitions-unreadable",
+		"resource": address(task),
+		"msg": sprintf(
+			"%s has container definitions that cannot be evaluated at plan time, so no container policy can be applied to it. This usually means the JSON embeds a value computed during apply -- reference a derived name instead of a resource attribute.",
+			[address(task)],
+		),
+	}
+}
+
+# ---------------------------------------------------------------------------
 # Container hardening
 #
 # These are checked on the task definition rather than the Dockerfile. A
@@ -51,23 +79,49 @@ deny contains finding if {
 # passed staging" stops meaning anything. The pipeline deploys digests.
 # ---------------------------------------------------------------------------
 
+# `:latest` is refused everywhere, on every target, with no exemption. It is
+# mutable by design and carries no information about what is running.
 deny contains finding if {
 	some entry in container_definitions
-	mutable_image(entry.container.image)
+	endswith(entry.container.image, ":latest")
 
 	finding := {
 		"rule": "immutable-image",
 		"resource": entry.task,
 		"msg": sprintf(
-			"container %q deploys %q. Deploy an image by digest so the artifact that was tested is the artifact that runs.",
+			"container %q deploys %q. The latest tag is mutable by definition, so it cannot identify what is running.",
 			[entry.container.name, entry.container.image],
 		),
 	}
 }
 
-mutable_image(image) if endswith(image, ":latest")
+# A tag without a digest is refused on any target that pulls from a registry.
+#
+# Exempt on the local emulator only, because an image built on the host and
+# never pushed has no registry digest to reference — there is literally nothing
+# to pin to. The exemption is narrow: it covers a missing digest, not `:latest`,
+# and it applies only when the caller declares the local target.
+#
+# It defaults to *strict*. If the target is not declared, the digest is
+# required. A policy that relaxes when it is unsure of its context is a policy
+# that can be relaxed by forgetting to configure it.
+deny contains finding if {
+	some entry in container_definitions
+	not contains(entry.container.image, "@sha256:")
+	not endswith(entry.container.image, ":latest")
+	not local_target
 
-mutable_image(image) if not contains(image, "@sha256:")
+	finding := {
+		"rule": "immutable-image",
+		"resource": entry.task,
+		"msg": sprintf(
+			"container %q deploys %q by tag. Deploy by digest so the artifact that was tested is bit-for-bit the artifact that runs.",
+			[entry.container.name, entry.container.image],
+		),
+	}
+}
+
+local_target if data.config.target == "local"
 
 # ---------------------------------------------------------------------------
 # Secrets

@@ -84,6 +84,11 @@ const POLICY_FIXTURES: ReadonlyArray<[fixture: string, rule: string, because: st
     "no-plaintext-secrets",
     "a secret in a task definition is readable by anyone with describe permissions",
   ],
+  [
+    "unreadable-container-definitions",
+    "container-definitions-unreadable",
+    "a policy engine that cannot see its input must not approve it",
+  ],
 ];
 
 describe("terraform policy guardrails", () => {
@@ -293,6 +298,7 @@ describe("the guardrails are actually wired to the fixtures", () => {
     ["root-container", "no-root-container", "container.rego"],
     ["mutable-image-tag", "immutable-image", "container.rego"],
     ["plaintext-secret", "no-plaintext-secrets", "container.rego"],
+    ["unreadable-container-definitions", "container-definitions-unreadable", "container.rego"],
     ["public-security-group", "no-public-ingress", "network.rego"],
     ["unencrypted-bucket", "encryption-required", "storage.rego"],
   ];

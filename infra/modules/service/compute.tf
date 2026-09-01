@@ -75,7 +75,15 @@ resource "aws_ecs_task_definition" "main" {
           { name = "AWS_REGION", value = var.region },
         ],
         var.bucket_name == null ? [] : [
-          { name = "BUCKET_NAME", value = aws_s3_bucket.main[0].id },
+          # The derived name, not aws_s3_bucket.main[0].id.
+          #
+          # Referencing the resource attribute makes the whole encoded
+          # container_definitions string unknown at plan time, which silently
+          # disables every container policy — they iterate an empty set and
+          # report success. The bucket's name is this exact expression (see
+          # storage.tf), so using it directly costs nothing and keeps the task
+          # definition inspectable by the policy gate.
+          { name = "BUCKET_NAME", value = "${var.bucket_name}-${var.environment}" },
         ],
         /*
          * Emulator only.
