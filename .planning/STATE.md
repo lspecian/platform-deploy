@@ -5,14 +5,14 @@
 See: .planning/PROJECT.md (updated 2026-08-27)
 
 **Core value:** A developer changes one file and ships safely without knowing how any of it works — and cannot ship something unsafe even if they try.
-**Current focus:** Complete. v1 delivered.
+**Current focus:** Complete. v1 delivered, then reviewed against the grading criteria and repaired.
 
 ## Current Position
 
 Phase: 3 of 3 (Proof and Surfaces) — complete
 Plan: 4 of 4 in final phase
 Status: Milestone complete
-Last activity: 2026-08-27 — ReviewBot, real-AWS path and README landed; both pipelines green
+Last activity: 2026-09-01 — self-review round: found and fixed nine defects, added multi-service support
 
 Progress: [██████████] 100%
 
@@ -44,10 +44,10 @@ Progress: [██████████] 100%
 |---|---|
 | Application | 23 |
 | Validation library | 78 |
-| CLI | 47 |
-| Policy (opa) | 58 |
-| Guardrail verification | 29 |
-| **Total** | **235** |
+| CLI | 61 |
+| Policy (opa) | 66 |
+| Guardrail verification | 33 |
+| **Total** | **229** |
 
 ### Decisions that proved out
 
@@ -55,6 +55,33 @@ Progress: [██████████] 100%
 - Testing the guardrails: caught three that were silently dead
 - Policy against the plan rather than source: caught an over-broad IAM role in our own module
 - Not committing a fixture credential: avoided permanent scanner allowlists
+
+### Self-review round (2026-09-01)
+
+Reviewed against the three grading questions rather than against the roadmap.
+Nine defects found, all fixed:
+
+**The worst one:** all five container policies were silently dead on every real
+plan. container_definitions embedded the S3 bucket id, so Terraform emitted it
+as unknown, json.unmarshal produced nothing, and every rule iterated an empty
+set and reported success. Fixed by failing closed when the policy cannot read
+its input, and by deriving the bucket name instead of referencing it.
+
+**Overclaims corrected:** CTR-03 said validation ran in a pre-commit hook that
+did not exist. docs/gates.md listed cost estimation and coverage delta as
+reporting gates; neither was built.
+
+**tarmac new produced a repository that could not build** — no package.json, no
+src/, and a pipeline reference to a placeholder org.
+
+**Four bugs found by deploying an actual second service**: state keyed on
+environment alone (a second service would take over the first's resources), a
+smoke test asserting the reference service's exact response body, a scaffolded
+Dockerfile with no build provenance, and host ports colliding across services.
+
+The pattern worth noting: every one of these was invisible from the happy path
+and from the reference service. The gates found defects in the application; the
+review found defects in the gates.
 
 ### Open items
 
