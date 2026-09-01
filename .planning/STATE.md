@@ -46,8 +46,8 @@ Progress: [██████████] 100%
 | Validation library | 78 |
 | CLI | 61 |
 | Policy (opa) | 66 |
-| Guardrail verification | 33 |
-| **Total** | **229** |
+| Guardrail verification | 31 |
+| **Total** | **259** |
 
 ### Decisions that proved out
 
